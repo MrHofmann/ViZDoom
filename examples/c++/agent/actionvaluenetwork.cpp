@@ -1,7 +1,297 @@
 #include "actionvaluenetwork.h"
 #include <limits>
 
-double ActionValueNetwork::conv_product(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, const matrix3d &filter, unsigned row, unsigned col) const
+
+NetworkLayer::NetworkLayer(std::string n, ActivationType a, const std::vector<unsigned> &s)
+	:_layerName(n), _activationType(a), _layerSize(s)
+{
+	std::cout << "NetworkLayer::NetworkLayer" << std::endl;
+}
+
+std::string NetworkLayer::layerName() const
+{
+	//std::cout << "NetworkLayer::layerName" << std::endl;
+	return _layerName;
+}
+
+ActivationType NetworkLayer::activationType() const
+{
+	std::cout << "NetworkLayer::activationType" << std::endl;
+	return _activationType;
+}
+
+std::vector<unsigned> NetworkLayer::layerSize() const
+{
+	//std::cout << "NetworkLayer::layerSize" << std::endl;
+	return _layerSize;
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------------//
+
+Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fd, unsigned fs)
+	:NetworkLayer(ln, at, ls), _filterDim(fd), _filterStride(fs)
+{
+	std::cout << "Conv3dLayer::Conv3dLayer" << std::endl;
+
+    Tensor3d *prevVertices;
+	if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::CONV)
+		prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
+	else if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::MAX_POOL)
+		prevVertices = ((Pool3dLayer*)prevLayer)->vertices();
+	else if(prevLayer != nullptr)
+	{
+		std::cout << "Unexpected previous layer type. Previous layer should be CONV or POOL." << std::endl;
+		std::exit(1);
+	}
+	_vertices = new Tensor3d();
+	std::vector<unsigned> curLayerSize = layerSize();
+	for(unsigned i=0; i<curLayerSize[0]; ++i)
+	{
+		Tensor2d t2;
+		for(unsigned j=0; j<curLayerSize[1]; ++j)
+		{
+			Tensor1d t1;
+			for(unsigned k=0; k<curLayerSize[2]; ++k)
+			{
+				Vertex *v = new Vertex{at, 0, 0, 0, 0, 0, std::vector<Edge*>(), nullptr};
+				if(prevLayer != nullptr)
+				{
+					unsigned filterDepth = prevLayer->layerSize()[2];
+					unsigned numEdges = _filterDim*_filterDim*prevLayer->layerSize()[2];
+					for(unsigned h=0; h<_filterDim; ++h)
+						for(unsigned w=0; w<_filterDim; ++w)
+							for(unsigned d=0; d<filterDepth; ++d)
+							{
+								Edge *e = new Edge{0, 0, 0, (*prevVertices)[i+h][j+w][d], v};
+								v->in_edges.push_back(e);
+							}
+				}
+				
+				t1.push_back(v);
+			}
+
+			t2.push_back(t1);
+		}
+		_vertices->push_back(t2);
+	}
+}
+
+NetworkLayer::LayerType Conv3dLayer::layerType() const
+{
+	//std::cout << "Conv3dLayer::layerType" << std::endl;
+	return NetworkLayer::CONV;
+}
+
+void Conv3dLayer::forwardProp()
+{
+	std::cout << "Conv3dLayer::forwardProp" << std::endl;
+
+	for(unsigned i=0; i<(*_vertices).size(); ++i)
+		for(unsigned j=0; j<(*_vertices)[i].size(); ++j)
+			for(unsigned k=0; k<(*_vertices)[i][j].size(); ++k)
+			{
+				// Parallelize this block.
+				Vertex *v = (*_vertices)[i][j][k];
+				v->inner_product = 0;
+				for(unsigned h=0; h<v->in_edges.size(); ++h)
+					for(unsigned w=0; w<v->in_edges[h].size(); ++w)
+						for(unsigned d=0; d<v->in_edges[h][w].size(); ++d)
+						{
+							Edge *e = v->in_edges[h][w][d];
+							v->in_products[h][w][d] = e->in_neuron->activation * e->weight;
+							v->inner_product += v->in_products[h][w][d];
+						}
+				
+				v->inner_product += v->bias;
+                //switch(v->activation_type){...}
+	            v->activation = std::max(0.0, v->inner_product);
+			}
+}
+
+unsigned Conv3dLayer::filterDim() const
+{
+	std::cout << "Conv3dLayer::filterDim" << std::endl;	
+}
+
+unsigned Conv3dLayer::filterStride() const
+{
+	std::cout << "Conv3dLayer::filterStride" << std::endl;
+}
+
+Tensor3d* Conv3dLayer::vertices() const
+{
+	//std::cout << "Conv3dLayer::vertices" << std::endl;
+	return _vertices;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------//
+Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pd, unsigned ps)
+    :NetworkLayer(ln, at, ls), _poolDim(pd), _poolStride(ps)
+{
+	std::cout << "Pool3dLayer::Pool3dLayer" << std::endl;
+
+	if(prevLayer == nullptr || prevLayer->layerType() != NetworkLayer::CONV)
+	{
+		std::cout << "Unexpected previous layer type. Previous layer must be conv." << std::endl;
+		std::exit(1);
+	}
+
+	_vertices = new Tensor3d();
+	std::vector<unsigned> curLayerSize = layerSize();
+	unsigned poolDepth = prevLayer->layerSize()[2];
+	unsigned numEdges = _poolDim*_poolDim*prevLayer->layerSize()[2];
+	Tensor3d *prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
+	for(unsigned i=0; i<curLayerSize[0]; ++i)
+	{
+		Tensor2d t2;
+		for(unsigned j=0; j<curLayerSize[1]; ++j)
+		{
+			Tensor1d t1;
+			for(unsigned k=0; k<curLayerSize[2]; ++k)
+			{
+				// This vertex should be different from the one used in conv layers.
+				Vertex *v = new Vertex{at, 0, 0, 0, 0, 0, std::vector<Edge*>(), nullptr};
+				for(unsigned h=0; h<_poolDim; ++h)
+					for(unsigned w=0; w<_poolDim; ++w)
+						for(unsigned d=0; d<poolDepth; ++d)
+						{
+							Edge *e = new Edge{0, 0, 0, (*prevVertices)[i+h][j+w][d], v};
+							v->in_edges.push_back(e);
+						}				
+
+				t1.push_back(v);
+			}
+
+			t2.push_back(t1);
+		}
+
+		_vertices->push_back(t2);
+	}
+}
+
+NetworkLayer::LayerType Pool3dLayer::layerType() const
+{
+	//std::cout << "Pool3dLayer::layerType" << std::endl;
+	return NetworkLayer::MAX_POOL;
+}
+
+void Pool3dLayer::forwardProp()
+{
+	std::cout << "Pool3dLayer::forwardProp" << std::endl;
+
+    for(unsigned i=0; i<(*_vertices).size(); ++i)
+        for(unsigned j=0; j<(*_vertices)[i].size(); ++j)
+            for(unsigned k=0; k<(*_vertices)[i][j].size(); ++k)
+            {
+              	// Parallelize this block.
+                Vertex *v = (*_vertices)[i][j][k];
+				//v->inner_product = 0;
+				v->activation = std::numeric_limits<double>::min();
+                for(unsigned h=0; h<v->in_edges.size(); ++h)
+                	for(unsigned w=0; w<v->in_edges[h].size(); ++w)
+                    	for(unsigned d=0; d<v->in_edges[h][w].size(); ++d)
+                        {
+                            Edge *e = v->in_edges[h][w][d];
+                           	//v->in_products[h][w][d] = e->in_neuron->activation * e->weight;
+                            //v->inner_product += v->in_products[h][w][d];
+							if(e->in_neuron->activation > v->activation)
+								v->activation = e->in_neuron->activation;
+                        }
+                //v->inner_product += v->bias;
+                //switch(v->activation_type){...}
+				//v->activation = std::max(0.0, v->inner_product);
+			}
+}
+
+Tensor3d* Pool3dLayer::vertices() const{
+	//std::cout << "Pool3dLayer::vertices" << std::endl;
+	return _vertices;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------//
+DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu)
+	:NetworkLayer(ln, at, ls), _numHiddenUnits(hu)
+{
+	std::cout << "DenseLayer::DenseLayer" << std::endl;
+
+	_vertices = new Tensor1d();
+	std::vector<unsigned> curLayerSize = layerSize();
+	for(unsigned i=0; i<curLayerSize[0]; ++i)
+	{
+		Vertex *v = new Vertex{at, 0, 0, 0, 0, 0, std::vector<Edge*>(), nullptr};
+		if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::FC)
+		{
+			Tensor1d *prevVertices = ((DenseLayer*)prevLayer)->vertices();
+            std::vector<unsigned> prevLayerSize = prevLayer->layerSize();
+            for(unsigned j=0; j<prevLayerSize[0]; ++j)
+			{
+				Edge *e = new Edge{0, 0, 0, (*prevVertices)[j], v};
+				v->in_edges.push_back(e);
+			}
+		}
+	    else if(prevLayer != nullptr)
+		{
+	        Tensor3d *prevVertices = nullptr;
+	        if(prevLayer->layerType() == NetworkLayer::CONV)
+	            prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
+	        else if(prevLayer->layerType() == NetworkLayer::MAX_POOL)
+	            prevVertices = ((Pool3dLayer*)prevLayer)->vertices();
+        	else
+		    {   
+				std::cout << "Unexpected previous layer type. Previous layer should be CONV, POOL or FC." << std::endl;
+				std::exit(1);
+			}
+
+			std::vector<unsigned> prevLayerSize = prevLayer->layerSize();
+			for(unsigned h=0; h<prevLayerSize[0]; ++h)
+				for(unsigned w=0; w<prevLayerSize[1]; ++w)
+            		for(unsigned d=0; d<prevLayerSize[2]; ++d)
+                	{
+	           			Edge *e = new Edge{0, 0, 0, (*prevVertices)[h][w][d], v};
+						v->in_edges.push_back(e);
+                	}
+		}
+
+		_vertices->push_back(v);
+	}
+}
+
+NetworkLayer::LayerType DenseLayer::layerType() const
+{
+	//std::cout << "DenseLayer::layerType" << std::endl;
+	return NetworkLayer::FC;
+}
+
+void DenseLayer::forwardProp()
+{
+	std::cout << "DenseLayer::forwardProp" << std::endl;
+
+	for(unsigned i=0; i<(*_vertices).size(); ++i)
+	{
+		// Parallelize this block.
+		Vertex *v = (*_vertices)[i];
+		v->inner_product = 0;
+		for(unsigned j=0; j<v->in_edges.size(); ++j)
+		{
+			Edge *e = v->in_edges[j];
+			v->in_products[j] = e->weight * e->in_neuron->activation;
+			v->inner_product += v->in_products[j];
+		}
+
+		v->inner_product += v->bias;
+		v->activation = std::max(0.0, v->inner_product);
+	}
+}
+
+Tensor1d* DenseLayer::vertices() const
+{
+	//std::cout << "DenseLayer::vertices" << std::endl;
+	return _vertices;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------//
+/*double ActionValueNetwork::conv_product(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, const matrix3d &filter, unsigned row, unsigned col) const
 {
 	//std::cout << "ActionValueNetwork::conv_product" << std::endl;
 
@@ -22,9 +312,10 @@ double ActionValueNetwork::conv_product(vizdoom::BufferPtr state, std::vector<un
 		}
 
 	return product;
-}
+}*/
 
-double ActionValueNetwork::max_pool(vizdoom::BufferPtr input, std::vector<unsigned> input_dim, int buffer_index, 
+
+/*double ActionValueNetwork::max_pool(vizdoom::BufferPtr input, std::vector<unsigned> input_dim, int buffer_index, 
 		unsigned pool_width, unsigned pool_height) const
 {
 	//std::cout << "ActionValueNetwork::max_pool" << std::endl;
@@ -41,9 +332,9 @@ double ActionValueNetwork::max_pool(vizdoom::BufferPtr input, std::vector<unsign
 		}		
 
 	return result;
-}
+}*/
 
-void ActionValueNetwork::conv3d(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, std::string layer_name, 
+/*void ActionValueNetwork::conv3d(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, std::string layer_name, 
 		unsigned c, vizdoom::BufferPtr result)
 {
 	std::cout << "ActionValueNetwork::conv3d" << std::endl;
@@ -84,9 +375,9 @@ void ActionValueNetwork::conv3d(vizdoom::BufferPtr state, std::vector<unsigned> 
 			}
 		}
 	}
-}
+}*/
 
-void ActionValueNetwork::pool3d(vizdoom::BufferPtr input, std::vector<unsigned> prev_size, std::string layer_name, vizdoom::BufferPtr result)
+/*void ActionValueNetwork::pool3d(vizdoom::BufferPtr input, std::vector<unsigned> prev_size, std::string layer_name, vizdoom::BufferPtr result)
 {
 	std::cout << "ActionValueNetwork::pool3d" << std::endl;
 
@@ -115,9 +406,9 @@ void ActionValueNetwork::pool3d(vizdoom::BufferPtr input, std::vector<unsigned> 
 		}
 		buffer_index += prev_size[2]*prev_size[1]*(this->pool_strides[layer_name]-1);
 	}
-}
+}*/
 
-void ActionValueNetwork::fc_prop(vizdoom::BufferPtr input, std::string layer_name, vizdoom::BufferPtr result)
+/*void ActionValueNetwork::fc_prop(vizdoom::BufferPtr input, std::string layer_name, vizdoom::BufferPtr result)
 {
 	std::cout << "ActionValueNetwork::fc_prop" << std::endl;
 
@@ -128,95 +419,136 @@ void ActionValueNetwork::fc_prop(vizdoom::BufferPtr input, std::string layer_nam
 		for(unsigned i=0; i<(*input).size(); ++i)
 			(*result)[j] += (*input)[i]*this->weights_fc[layer_name][i][j];		
 	}
+}*/
+
+void ActionValueNetwork::firstLayerProp(vizdoom::BufferPtr s)
+{
+	std::cout << "ActionValueNetwork::firstLayerProp" << std::endl;
+
+    //std::vector<unsigned> prevLayerSize = _stateDim;
+	unsigned inputHeight = _stateDim[0];
+	unsigned inputWidth = _stateDim[1];
+	unsigned inputDepth = _stateDim[2];
+
+	NetworkLayer *firstLayer = *_layers.begin();
+	std::vector<unsigned> firstLayerSize = firstLayer->layerSize();
+	Tensor3d *firstVertices = ((Conv3dLayer*)firstLayer)->vertices();
+	unsigned filterDim = ((Conv3dLayer*)firstLayer)->filterDim();
+	unsigned filterStride = ((Conv3dLayer*)firstLayer)->filterStride();
+
+	for(unsigned i=0; i<(*firstVertices).size(); ++i)
+		for(unsigned j=0; j<(*firstVertices)[i].size(); ++j)
+		{
+			// Place where the top left corner of the filter is placed in the input.
+			int curInputIndex = (i*filterStride)*inputWidth*inputDepth + (j*filterStride)*inputDepth;
+			for(unsigned k=0; k<(*firstVertices)[i][j].size(); ++k)
+			{
+				// Parallelize this block.
+				Vertex *v = (*firstVertices)[i][j][k];
+				for(unsigned h=0; h<filterDim; ++h)
+					for(unsigned w=0; w<filterDim; ++w)
+						for(unsigned d=0; d<inputDepth; ++d)
+						{
+							Edge *e = v->in_edges[h][w][d];
+							double edgeProduct = e->weight * (*s)[i + h*inputWidth*inputDepth + w*inputDepth + d];
+							v->in_products[h][w][d] = edgeProduct;
+							v->inner_product += edgeProduct;
+						}
+
+				v->inner_product += v->bias;
+				//switch(v->activation_type){...}
+				v->activation = std::max(0.0, v->inner_product);
+			}
+
+		}
 }
 
+/*void ActionValueNetwork::singleLayerProp(NetworkLayer *layer)
+{
+	std::cout << "ActionValueNetwork::singleLayerProp" << std::endl;
+
+	//if(layer->layerType == NetworkLayer::
+
+}*/
+
 ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
-	:state_dim(conf.state_dim), num_actions(conf.num_actions)
+	:_stateDim(conf.state_dim), _numActions(conf.num_actions)
 {
 	std::cout << "ActionValueNetwork::ActionValueNetwork" << std::endl;
 
-	std::vector<unsigned> prev_layer_size = {state_dim[0], state_dim[1], state_dim[2]};
+	NetworkLayer *prevLayer = nullptr;
+	std::vector<unsigned> prevLayerSize = {_stateDim[0], _stateDim[1], _stateDim[2]};
 	for(unsigned i=0; i<conf.num_filters.size(); ++i)
 	{
-		std::string layer_name = "conv_" + std::to_string(i);
-		this->num_filters[layer_name] = conf.num_filters[i];
-		this->filter_dim[layer_name] = conf.filter_dim[i];
-		this->filter_strides[layer_name] = conf.filter_strides[i];
-		this->activations[layer_name] = conf.activations[i];
+		std::string layerName = "conv_" + std::to_string(i);
+		unsigned numFilter = conf.num_filters[i];
+		unsigned filterDim = conf.filter_dim[i];
+		unsigned filterStride = conf.filter_strides[i];
+		ActivationType activation = conf.activations[i];
 
 		// Add padding later.
-		unsigned layer_height = (prev_layer_size[0] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
-		unsigned layer_width = (prev_layer_size[1] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
-		unsigned layer_depth = conf.num_filters[i];
-		vizdoom::BufferPtr layer(new std::vector<uint8_t>(layer_height*layer_width*layer_depth));
-		this->layers.push_back(std::make_pair(CONV, std::make_pair(layer_name, layer)));
-	
-						// num_filters			num_rows 					num_columns 		num_channels = num_prev_channels
-  		matrix4d filters(conf.num_filters[i], matrix3d(conf.filter_dim[i], matrix2d(conf.filter_dim[i], matrix1d(prev_layer_size[2]))));
-  		weights_conv[layer_name] = filters;
-  		matrix1d biases(conf.num_filters[i]);
-  		bias_conv[layer_name] = biases;
+		unsigned layerHeight = (prevLayerSize[0] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
+		unsigned layerWidth = (prevLayerSize[1] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
+		unsigned layerDepth = conf.num_filters[i];
 
-		prev_layer_size = {layer_height, layer_width, layer_depth};
-		this->layer_sizes[layer_name] = prev_layer_size;
+		NetworkLayer *layer = new Conv3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, filterDim, filterStride);
+		_layers.push_back(layer);
+
+		prevLayer = layer;
+		prevLayerSize = {layerHeight, layerWidth, layerDepth};
+		_layerSizes[layerName] = prevLayerSize;
 		
 		if(conf.pool_dim[i] > 0)
 		{
-			layer_name = "max_pool_" + std::to_string(i);
-			this->pool_dim[layer_name] = conf.pool_dim[i];
-			this->pool_strides[layer_name] = conf.pool_strides[i];
+		   	layerName = "max_pool_" + std::to_string(i);
+			unsigned poolDim = conf.pool_dim[i];
+			unsigned poolStride = conf.pool_strides[i];
 
-			layer_height = (prev_layer_size[0] - conf.pool_dim[i])/conf.pool_strides[i] + 1;
-			layer_width = (prev_layer_size[1] - conf.pool_dim[i])/conf.pool_strides[i] + 1;
-			layer_depth = prev_layer_size[2];
+			layerHeight = (prevLayerSize[0] - poolDim)/poolStride + 1;
+			layerWidth = (prevLayerSize[1] - poolDim)/poolStride + 1;
+			layerDepth = prevLayerSize[2];
 			
-			vizdoom::BufferPtr layer(new std::vector<uint8_t>(layer_height*layer_width*layer_depth));
-			this->layers.push_back(std::make_pair(MAX_POOL, std::make_pair(layer_name, layer)));
-			
-			prev_layer_size = {layer_height, layer_width, layer_depth};
-			this->layer_sizes[layer_name] = prev_layer_size;
+			NetworkLayer *layer = new Pool3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, poolDim, poolStride);
+			_layers.push_back(layer);
+		
+			prevLayer = layer;
+			prevLayerSize = {layerHeight, layerWidth, layerDepth};
+			_layerSizes[layerName] = prevLayerSize;
 		}
 	}
 
-	int prev_fc_size = prev_layer_size[0]*prev_layer_size[1]*prev_layer_size[2];
+	int prevFcSize = prevLayerSize[0]*prevLayerSize[1]*prevLayerSize[2];
 	unsigned i;
 	for(i=0; i<conf.num_hidden_units.size(); ++i)
 	{
-		std::string layer_name = "fc_" + std::to_string(i);
-		this->num_hidden_units[layer_name] = conf.num_hidden_units[i];
+		std::string layerName = "fc_" + std::to_string(i);
+		unsigned numHiddenUnits = conf.num_hidden_units[i];
 
-		vizdoom::BufferPtr layer(new std::vector<uint8_t>(conf.num_hidden_units[i]));
-		this->layers.push_back(std::make_pair(FC, std::make_pair(layer_name, layer)));
-		this->layer_sizes[layer_name] = {conf.num_hidden_units[i]};	
+		NetworkLayer *layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
+		_layers.push_back(layer);
+		_layerSizes[layerName] = {conf.num_hidden_units[i]};
   	
-		matrix2d weights(prev_fc_size, matrix1d(conf.num_hidden_units[i]));
-    weights_fc[layer_name] = weights;
-    bias_fc[layer_name] = 0;
-
-		prev_fc_size = conf.num_hidden_units[i];
+		prevLayer = layer;
+		prevFcSize = conf.num_hidden_units[i];
 	}
 	
 	// Output layer	
-	std::string layer_name = "fc_" + std::to_string(i);
-	unsigned output_size = 1 << conf.num_actions;
-	this->num_hidden_units[layer_name] = output_size;
+	std::string layerName = "fc_" + std::to_string(i);
+	unsigned outputSize = 1 << conf.num_actions;
+	unsigned numHiddenUnits = outputSize;
 
-	vizdoom::BufferPtr layer(new std::vector<uint8_t>(output_size));
-	this->layers.push_back(std::make_pair(FC, std::make_pair(layer_name, layer)));
-	this->layer_sizes[layer_name] = {output_size};
-  	
-	matrix2d weights(prev_fc_size, matrix1d(output_size));
-  weights_fc[layer_name] = weights;
-  bias_fc[layer_name] = 0;
+	NetworkLayer *layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
+	_layers.push_back(layer);
+	_layerSizes[layerName] = {outputSize};
+	
+//	this->init_kaiming();
 
-	this->init_kaiming();
-
-	for(auto it=this->layers.begin(); it!=layers.end(); it++)
+	for(auto it=this->_layers.begin(); it!=_layers.end(); it++)
 	{
-		std::string layer_name = it->second.first;
-		std::cerr << layer_name << " [ ";
-		for(unsigned i=0; i<this->layer_sizes[layer_name].size(); ++i)
-			std::cerr << layer_sizes[layer_name][i] << " ";
+		std::string layerName = (*it)->layerName();
+		std::cerr << layerName << " [ ";
+		for(unsigned i=0; i<_layerSizes[layerName].size(); ++i)
+			std::cerr << _layerSizes[layerName][i] << " ";
 		std::cerr << "]" << std::endl;
 	}
 }
@@ -225,21 +557,27 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 std::vector<double> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 {
 	std::cout << "ActionValueNetwork::get_action_values" << std::endl;
-		
-	vizdoom::BufferPtr prev_layer = s;
-	std::vector<unsigned> prev_layer_size = this->state_dim;
-	for(auto it=this->layers.begin(); it!=this->layers.end(); it++)
+	
+	// Init first layer.
+	firstLayerProp(s);
+
+	auto it=_layers.begin();
+	it++;
+	for(; it!=_layers.end(); it++)
 	{
 		// activation(prev_layer*W + b)
-		std::string layer_name = it->second.first;
+		(*it)->forwardProp();
+		
+		/*std::string layer_name = it->first;
 		vizdoom::BufferPtr layer = it->second.second;
-		switch(it->first){
+		switch(curLayer->layerType()){
 			case CONV:
 			{
 				std::cout << "CONV" << std::endl;
 				std::map<std::string, unsigned> num_f = this->num_filters;
 				for(unsigned i=0; i<num_f[layer_name]; ++i)
 					conv3d(prev_layer, prev_layer_size, layer_name, i, layer);
+				conv3d(prevLayer, curLayer
 				break;
 			}
 			case MAX_POOL:
@@ -257,21 +595,25 @@ std::vector<double> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 			default:
 				break;
 		}
+
 		prev_layer = layer;
-		prev_layer_size = this->layer_sizes[layer_name];
+		prev_layer_size = this->layer_sizes[layerName];*/
+
 	}
 
 	// return layers.back().second; // (BufferPtr)
-	return std::vector<double>((*prev_layer).begin(), (*prev_layer).end());
+	//return std::vector<double>((*prev_layer).begin(), (*prev_layer).end());
+	return std::vector<double>();
 }
 
-void ActionValueNetwork::init_saxe(unsigned num_rows, unsigned num_cols)
+
+/*void ActionValueNetwork::init_saxe(unsigned num_rows, unsigned num_cols)
 {
 	std::cout << "ActionValueNetwork::init_saxe" << std::endl;
-}
+}*/
 
 // Kaiming He initialization. Appropriate for ReLU and leaky ReLU activations.
-void ActionValueNetwork::init_kaiming()
+/*void ActionValueNetwork::init_kaiming()
 {
 	std::cout << "ActionValueNetwork::init_kaiming" << std::endl;
 
@@ -301,23 +643,23 @@ void ActionValueNetwork::init_kaiming()
 	}
 
 	//Bias should already be initialized to 0.
-}
+}*/
 
-std::vector<std::vector<double>> ActionValueNetwork::get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat)
+/*std::vector<std::vector<double>> ActionValueNetwork::get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat)
 {
 	std::cout << "ActionValueNetwork::get_td_update" << std::endl;
 
 	// Continue here tomorrow.
-}
+}*/
 
-std::list<std::pair<LayerType, std::pair<std::string, vizdoom::BufferPtr>>> ActionValueNetwork::get_layers() const
+/*std::list<std::pair<LayerType, std::pair<std::string, vizdoom::BufferPtr>>> ActionValueNetwork::get_layers() const
 {
 	std::cout << "ActionValueNetwork::get_layers" << std::endl;
 
 	return this->layers;
-}
+}*/
 
-std::map<std::string, matrix4d> ActionValueNetwork::get_weights_conv() const
+/*std::map<std::string, matrix4d> ActionValueNetwork::get_weights_conv() const
 {
 	std::cout << "ActionValueNetwork::get_weights" << std::endl;
 
@@ -357,4 +699,4 @@ void ActionValueNetwork::set_weights(const std::map<std::string, matrix4d> &w_co
 	this->bias_conv = b_conv;
 	this->weights_fc = w_fc;
 	this->bias_fc = b_fc;
-}
+}*/

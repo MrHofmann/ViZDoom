@@ -8,17 +8,15 @@
 #include <map>
 
 
-enum LayerType {CONV, MAX_POOL, FC};
+//enum LayerType {CONV, MAX_POOL, FC};
 enum ActivationType {RELU, LRELU, TANH, SIGMOID};
-
-typedef std::vector<std::vector<std::vector<std::vector<std::vector<double>>>>> matrix5d;
-typedef std::vector<std::vector<std::vector<std::vector<double>>>> matrix4d;
-typedef std::vector<std::vector<std::vector<double>>> matrix3d;
-typedef std::vector<std::vector<double>> matrix2d;
-typedef std::vector<double> matrix1d;
 
 struct Vertex;
 struct Edge;
+
+//typedef std::vector<std::vector<std::vector<Vertex*>>> Tensor3d;
+//typedef std::vector<std::vector<Vertex*>> Tensor2d;
+//typedef std::vector<Vertex*> Tensor1d;
 
 struct NetworkConfig{
 	//self.rand_generator = np.random.RandomState(network_config.get("seed"))

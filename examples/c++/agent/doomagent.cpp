@@ -105,10 +105,10 @@ std::vector<double> DoomAgent::agent_step(double reward, vizdoom::BufferPtr stat
 	this->episode_steps += 1;
 	
 	std::vector<double> action = this->policy(state);
-	std::cout << "{ ";
-	for(unsigned i=0; i<action.size(); ++i)
-		std::cout << action[i] << " ";
-	std::cout << "}" << std::endl;	
+	//std::cout << "{ ";
+	//for(unsigned i=0; i<action.size(); ++i)
+	//	std::cout << action[i] << " ";
+	//std::cout << "}" << std::endl;	
 
 	this->replay_buffer.append(this->last_state, this->last_action, reward, false, state);
 	if(this->replay_buffer.get_buffer_size() > this->replay_buffer.get_minibatch_size())

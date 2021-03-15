@@ -85,7 +85,7 @@ int main() {
 			
     int episodes = 10;
 		AgentConfig agent_conf = {8, 100, 10, 7, 1, 1};
-		NetworkConfig net_conf = {{160, 120, 3}, {32, 16}, {8, 4}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {100, 50}, 8};
+		NetworkConfig net_conf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
 		OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
 		DoomAgent agent(agent_conf, net_conf, opt_conf);
 		//agent.agent_init();
@@ -139,7 +139,7 @@ int main() {
 
 						auto stop = std::chrono::high_resolution_clock::now();
 						auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-						std::cout << duration.count() << std::endl; 
+						//std::cout << duration.count() << std::endl; 
 						
             if(sleepTime) sleep(sleepTime);
         }
