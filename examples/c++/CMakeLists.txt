@@ -5,20 +5,20 @@ if(COMMAND cmake_policy)
 	cmake_policy(SET CMP0003 NEW)
 endif(COMMAND cmake_policy)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 add_library(libvizdoom SHARED IMPORTED GLOBAL)
 if (WIN32)
 	set_property(TARGET libvizdoom PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../bin/vizdoom.lib)
 endif()
 if (UNIX AND NOT APPLE)
-	set_property(TARGET libvizdoom PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../bin/libvizdoom.so)
+	set_property(TARGET libvizdoom PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../build/bin/libvizdoom.so)
 endif()
 if (APPLE)
 	set_property(TARGET libvizdoom PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../bin/libvizdoom.dylib)
 endif()
 
-find_package(Boost COMPONENTS filesystem thread system date_time chrono regex iostreams REQUIRED)
+find_package(Boost 1.74.0 EXACT COMPONENTS filesystem thread system date_time chrono regex iostreams REQUIRED)
 find_package(Threads REQUIRED)
 
 set( VIZDOOM_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../include )
@@ -33,6 +33,12 @@ set( VIZDOOM_LIBS libvizdoom
 if( UNIX AND NOT APPLE)
 	set( VIZDOOM_LIBS ${VIZDOOM_LIBS} rt)
 endif()
+
+add_executable( test Test.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/experiencereplaybuffer.cpp)
+target_link_libraries (test ${VIZDOOM_LIBS})
+
+add_executable( main Main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/experiencereplaybuffer.cpp)
+target_link_libraries (main ${VIZDOOM_LIBS})
 
 add_executable( basic Basic.cpp )
 target_link_libraries (basic ${VIZDOOM_LIBS})
