@@ -2,12 +2,9 @@
 #define ACTIONVALUENETWORK_H
 
 #include <iostream>
+//#include <thrust/device_vector.h>
 #include "datastructures.h"
-//#include "networkvertex.h"
-
-typedef std::vector<std::vector<std::vector<Vertex*>>> Tensor3d;
-typedef std::vector<std::vector<Vertex*>> Tensor2d;
-typedef std::vector<Vertex*> Tensor1d;
+#include "networkelements.h"
 
 class NetworkLayer{
 private:
@@ -32,7 +29,7 @@ class Conv3dLayer : public NetworkLayer{
 private:
 	unsigned _filterDim;
 	unsigned _filterStride;
-	Tensor3d *_vertices;
+	Tensor3d<Conv3dVertex*> *_vertices;
 
 public:
 	Conv3dLayer(){}
@@ -42,34 +39,34 @@ public:
 
 	unsigned filterDim() const;
 	unsigned filterStride() const;
-	Tensor3d* vertices() const;
+	Tensor3d<Conv3dVertex*>* vertices() const;
 };
 
 class Pool3dLayer : public NetworkLayer{
 private:
 	unsigned _poolDim;
 	unsigned _poolStride;
-	Tensor3d *_vertices;
+	Tensor3d<Pool3dVertex*> *_vertices;
 
 public:
 	Pool3dLayer(){}
 	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pd, unsigned ps);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
-	Tensor3d *vertices() const;
+	Tensor3d<Pool3dVertex*> *vertices() const;
 };
 
 class DenseLayer : public NetworkLayer{
 private:
 	unsigned _numHiddenUnits;
-	Tensor1d *_vertices;
+	Tensor1d<Dense1dVertex*> *_vertices;
 
 public:
 	DenseLayer(){}
 	DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
-	Tensor1d *vertices() const;
+	Tensor1d<Dense1dVertex*> *vertices() const;
 };
 
 class ActionValueNetwork{
