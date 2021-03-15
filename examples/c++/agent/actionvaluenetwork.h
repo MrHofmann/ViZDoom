@@ -3,6 +3,7 @@
 
 #include <iostream>
 //#include <thrust/device_vector.h>
+//#include <thrust/device_ptr.h>
 #include "datastructures.h"
 #include "networkelements.h"
 
@@ -28,6 +29,7 @@ public:
 class Conv3dLayer : public NetworkLayer{
 private:
 	unsigned _filterDim;
+	unsigned _filterDepth;
 	unsigned _filterStride;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
@@ -36,6 +38,8 @@ public:
 	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fd, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
+	//thrust::device_ptr<float> weightsToDevice() const;
+	//thrust::device_ptr<float> activationsToDevice() const;
 
 	unsigned filterDim() const;
 	unsigned filterStride() const;
@@ -45,6 +49,7 @@ public:
 class Pool3dLayer : public NetworkLayer{
 private:
 	unsigned _poolDim;
+	unsigned _poolDepth;
 	unsigned _poolStride;
 	Tensor3d<Pool3dVertex*> *_vertices;
 

@@ -86,7 +86,7 @@ NetworkLayer::LayerType Conv3dLayer::layerType() const
 	//std::cout << "Conv3dLayer::layerType" << std::endl;
 	return NetworkLayer::CONV;
 }
-/*
+
 struct dp{
 	float *_input;
 	float *_weight;
@@ -107,13 +107,13 @@ struct dp{
 					
 				}
 	}
-};*/
+};
 
-void Conv3dLayer::forwardProp(/*NetworkLayer *prevLayer*/)
+void Conv3dLayer::forwardProp(NetworkLayer *prevLayer)
 {
 	std::cout << "Conv3dLayer::forwardProp" << std::endl;
 
-/*	std::vector<unsigned> weightSize = {_filterDim, _filterDim, prevLayer->layerSize()[2]};
+	std::vector<unsigned> weightSize = {_filterDim, _filterDim, prevLayer->layerSize()[2]};
 	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
 	int prevLayerSize = prevLayer->layerSize[0]*prevLayer->layerSize[1]*prevLayer->layerSize[2];
 	
@@ -127,7 +127,6 @@ void Conv3dLayer::forwardProp(/*NetworkLayer *prevLayer*/)
 	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), dotProduct.begin(),
 			dp(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weight.data()), weightSize, layerSize, prevLayerSize));
 	cudaDeviceSynchronize();
-*/
 
 //	for(unsigned i=0; i<(*_vertices).size(); ++i)
 //		for(unsigned j=0; j<(*_vertices)[i].size(); ++j)
@@ -155,7 +154,7 @@ void Conv3dLayer::forwardProp(/*NetworkLayer *prevLayer*/)
 //			}
 }
 
-/*thrust::device_ptr<float> Conv3dLayer::weightsToDevice() const
+thrust::device_ptr<float> Conv3dLayer::weightsToDevice() const
 {
 	//#include <thrust/device_ptr.h>
 	//#include <thrust/fill.h>
@@ -180,12 +179,13 @@ void Conv3dLayer::forwardProp(/*NetworkLayer *prevLayer*/)
 	//cudaFree(rawPtr);
 	
 	return devPtr;
-}*/
+}
 
-/*thrust::device_ptr<float> Conv3dLayer::activationsToDevice() const
+thrust::device_ptr<float> Conv3dLayer::activationsToDevice() const
 {
 
-}*/
+}
+
 
 unsigned Conv3dLayer::filterDim() const
 {
