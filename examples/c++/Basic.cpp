@@ -21,11 +21,11 @@ int main() {
     DoomGame *game = new DoomGame();
 
     // Sets path to vizdoom engine executive which will be spawned as a separate process. Default is "./vizdoom".
-    game->setViZDoomPath("../../bin/vizdoom");
+    game->setViZDoomPath("../../build/bin/vizdoom");
 
     // Sets path to doom2 iwad resource file which contains the actual doom game-> Default is "./doom2.wad".
-    game->setDoomGamePath("../../bin/freedoom2.wad");
-    //game->setDoomGamePath("../../bin/doom2.wad");      // Not provided with environment due to licences.
+    game->setDoomGamePath("../../wad/freedoom2.wad");
+    //game->setDoomGamePath("../../wad/doom2.wad");      // Not provided with environment due to licences.
 
     // Sets path to additional resources iwad file which is basically your scenario iwad.
     // If not specified default doom2 maps will be used and it's pretty much useless... unless you want to play doom.

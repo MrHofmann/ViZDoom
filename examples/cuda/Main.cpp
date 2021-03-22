@@ -44,14 +44,14 @@ int main() {
     //game->setRenderMessages(false);
     //game->setRenderCorpses(false);
 
-		game->addAvailableButton(MOVE_LEFT);
+	game->addAvailableButton(MOVE_LEFT);
     game->addAvailableButton(MOVE_RIGHT);
     game->addAvailableButton(ATTACK);
-		game->addAvailableButton(MOVE_FORWARD);
-		game->addAvailableButton(MOVE_BACKWARD);
-		game->addAvailableButton(TURN_LEFT);
-		game->addAvailableButton(TURN_RIGHT);
-		game->addAvailableButton(USE);
+	game->addAvailableButton(MOVE_FORWARD);
+	game->addAvailableButton(MOVE_BACKWARD);
+	game->addAvailableButton(TURN_LEFT);
+	game->addAvailableButton(TURN_RIGHT);
+	game->addAvailableButton(USE);
 
     // Adds game variables that will be included in state.
     game->addAvailableGameVariable(AMMO2);
@@ -84,62 +84,62 @@ int main() {
     std::srand(time(0));
 			
     int episodes = 10;
-		AgentConfig agent_conf = {8, 100, 10, 7, 1, 1};
-		NetworkConfig net_conf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
-		OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
-		DoomAgent agent(agent_conf, net_conf, opt_conf);
-		//agent.agent_init();
+	AgentConfig agent_conf = {8, 100, 10, 7, 1, 1};
+	NetworkConfig net_conf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
+	OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
+	DoomAgent agent(agent_conf, net_conf, opt_conf);
+	//agent.agent_init();
 
     // Pause the engine after each action. Easier to keep track of what's happening
     unsigned int sleepTime = 1000 / DEFAULT_TICRATE; // = 28
     for (int i = 0; i < episodes; ++i) {
         std::cout << "Episode #" << i + 1 << "\n";
-				unsigned b = 0;
+		unsigned b = 0;
         //It is not needed right after init(). It doesn't cost much and is nicer.
         game->newEpisode();
-				agent.agent_start(game->getState()->screenBuffer);
+		//agent.agent_start(game->getState()->screenBuffer);
         while (!game->isEpisodeFinished()) {
-						auto start = std::chrono::high_resolution_clock::now(); 
+			auto start = std::chrono::high_resolution_clock::now(); 
             GameStatePtr state = game->getState(); //is std::shared_ptr<GameState>
             unsigned int n              = state->number;
             std::vector<double> vars    = state->gameVariables; 
             //BufferPtr is std::shared_ptr<Buffer>, Buffer is std::vector<uint8_t>
-						BufferPtr screenBuf         = state->screenBuffer;
+			BufferPtr screenBuf         = state->screenBuffer;
             //BufferPtr depthBuf          = state->depthBuffer;
             //BufferPtr labelsBuf         = state->labelsBuffer;
             //BufferPtr automapBuf        = state->automapBuffer;
-						//std::vector<Label> labels   = state->labels;
-						
+			//std::vector<Label> labels   = state->labels;
 
 //----------------------------------------------------------------------------//
-//					AGENT STEP FUNCTION APPROXIMATOR GOES HERE												//
-						std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
-						//for(unsigned j=0; j<current_action.size(); ++j)
-						//	std::cout << current_action[j] << " ";
-						//std::cout << std::endl;
-						double reward = game->makeAction(currentAction);
+//			AGENT STEP FUNCTION APPROXIMATOR GOES HERE						//
+			//std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
+			//for(unsigned j=0; j<current_action.size(); ++j)
+				//	std::cout << current_action[j] << " ";
+			//std::cout << std::endl;
+			std::vector<double> currentAction = std::vector<double>(8);
+			double reward = game->makeAction(currentAction);
 //----------------------------------------------------------------------------//
 						
-						// Make random action and get reward
-						//unsigned num_buttons = game->getAvailableButtonsSize();
+			// Make random action and get reward
+			//unsigned num_buttons = game->getAvailableButtonsSize();
             //double reward = game->makeAction(actions[std::rand() % num_buttons]); 
             // Makes a "prolonged" action and skip frames.            
-						// double reward = game->makeAction(choice(actions), skiprate)
+			// double reward = game->makeAction(choice(actions), skiprate)
 
             // The same could be achieved with:
             //game->setAction(choice(actions)) // if PLAYER mode is active
-						//game->advanceAction(); // advanceAction(4) Advance few tics at once
-						//std::vector<double> lastAction = game->getLastAction();
-						//double reward = game->getLastReward()
+			//game->advanceAction(); // advanceAction(4) Advance few tics at once
+			//std::vector<double> lastAction = game->getLastAction();
+			//double reward = game->getLastReward()
 
             //std::cout << "State #" << n << "\n";
             //std::cout << "Game variables: " << vars[0] << "\n";
             //std::cout << "Action reward: " << reward << "\n";
             //std::cout << "=====================\n";
 
-						auto stop = std::chrono::high_resolution_clock::now();
-						auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-						//std::cout << duration.count() << std::endl; 
+			auto stop = std::chrono::high_resolution_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+			std::cout << duration.count() << std::endl; 
 						
             if(sleepTime) sleep(sleepTime);
         }

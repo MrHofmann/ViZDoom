@@ -19,10 +19,10 @@ int main(){
 
     DoomGame *game = new DoomGame();
 
-    game->setViZDoomPath("../../bin/vizdoom");
+    game->setViZDoomPath("../../build/bin/vizdoom");
 
-    game->setDoomGamePath("../../bin/freedoom2.wad");
-    //game->setDoomGamePath("../../bin/doom2.wad");      // Not provided with environment due to licences.
+    game->setDoomGamePath("../../wad/freedoom2.wad");
+    //game->setDoomGamePath("../../wad/doom2.wad");      // Not provided with environment due to licences.
 
     game->setDoomMap("map01");
 

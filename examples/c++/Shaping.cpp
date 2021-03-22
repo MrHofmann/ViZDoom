@@ -22,8 +22,8 @@ int main(){
     // Health gathering scenario has scripted shaping reward.
     game->loadConfig("../../scenarios/health_gathering.cfg");
 
-    game->setDoomGamePath("../../bin/freedoom2.wad");
-    //game->setDoomGamePath("../../bin/doom2.wad");      // Not provided with environment due to licences.
+    game->setDoomGamePath("../../wad/freedoom2.wad");
+    //game->setDoomGamePath("../../wad/doom2.wad");      // Not provided with environment due to licences.
 
     game->setScreenResolution(RES_640X480);
 

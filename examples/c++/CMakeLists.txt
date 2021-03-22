@@ -34,12 +34,6 @@ if( UNIX AND NOT APPLE)
 	set( VIZDOOM_LIBS ${VIZDOOM_LIBS} rt)
 endif()
 
-#add_executable( test Test.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/experiencereplaybuffer.cpp)
-#target_link_libraries (test ${VIZDOOM_LIBS})
-
-add_executable( main Main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/networkelements.cpp ./agent/experiencereplaybuffer.cpp)
-target_link_libraries (main ${VIZDOOM_LIBS})
-
 add_executable( basic Basic.cpp )
 target_link_libraries (basic ${VIZDOOM_LIBS})
 
