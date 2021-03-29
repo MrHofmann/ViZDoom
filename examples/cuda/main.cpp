@@ -21,18 +21,18 @@ int main() {
     DoomGame *game = new DoomGame();
 
     // Sets path to vizdoom engine executive which will be spawned as a separate process.
-    game->setViZDoomPath("../../build/bin/vizdoom"); // Default is "./vizdoom"
+    game->setViZDoomPath("../../../build/bin/vizdoom"); // Default is "./vizdoom"
 
     // Sets path to doom2 iwad resource file which contains the actual doom game.
-    //game->setDoomGamePath("../../wad/freedoom2.wad");//Default "./doom2.wad"
-    game->setDoomGamePath("../../wad/doom2.wad");      
+    //game->setDoomGamePath("../../../wad/freedoom2.wad");//Default "./doom2.wad"
+    game->setDoomGamePath("../../../wad/doom2.wad");      
 
     // Sets path to additional resources iwad file which is your scenario iwad.
     // If not specified default doom2 maps will be used and it's pretty much useless... unless you want to play doom.
-    //game->setDoomScenarioPath("../../scenarios/basic.wad");
-		game->setDoomMap("map01");    
+    //game->setDoomScenarioPath("../../../scenarios/basic.wad");
+	game->setDoomMap("map01");    
 
-		game->setScreenResolution(RES_160X120); // Sets resolution. Default is 320X240
+	game->setScreenResolution(RES_160X120); // Sets resolution. Default is 320X240
     game->setScreenFormat(RGB24); // Default is CRCGCB.
     //game->setRenderHud(false);
     //game->setRenderMinimalHud(false); // If hud is enabled
@@ -112,11 +112,11 @@ int main() {
 
 //----------------------------------------------------------------------------//
 //			AGENT STEP FUNCTION APPROXIMATOR GOES HERE						//
-			//std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
+			std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
 			//for(unsigned j=0; j<current_action.size(); ++j)
 				//	std::cout << current_action[j] << " ";
 			//std::cout << std::endl;
-			std::vector<double> currentAction = std::vector<double>(8);
+			//std::vector<double> currentAction = std::vector<double>(8);
 			double reward = game->makeAction(currentAction);
 //----------------------------------------------------------------------------//
 						

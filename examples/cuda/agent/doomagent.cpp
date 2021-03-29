@@ -10,7 +10,7 @@ DoomAgent::DoomAgent(const AgentConfig &agent_conf, const NetworkConfig &net_con
 	std::cout << "DoomAgent::agent_init" << std::endl;
 
 	this->replay_buffer = ExperienceReplayBuffer(num_replay, agent_conf.num_minibatch, agent_conf.seed);
-	//this->network = ActionValueNetwork(net_conf);
+	this->network = ActionValueNetwork(net_conf);
 	this->optimizer = AdamOptimizer(net_conf, opt_conf);
 	
 	//self.rand_generator = np.random.RandomState(agent_config.get("seed"))
@@ -50,8 +50,8 @@ std::vector<double> DoomAgent::random_action_with_prob(const std::vector<double>
 // This is a softmax policy
 std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
-	//std::vector<double> action_values = this->network.get_action_values(state);
-	std::vector<double> action_values = std::vector<double>(8, 0.0);
+	std::vector<double> action_values = this->network.get_action_values(state);
+	//std::vector<double> action_values = std::vector<double>(8, 0.0);
 	
 	// Compute the preferences by dividing the action-values by the temperature parameter tau
 	std::vector<double> preferences;

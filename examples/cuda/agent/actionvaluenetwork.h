@@ -8,16 +8,17 @@
 #include "networkelements.h"
 
 class NetworkLayer{
-private:
+protected:
 	std::string _layerName;
 	ActivationType _activationType;
 	std::vector<unsigned> _layerSize;
+	NetworkLayer *_prevLayer;
 		
 public:
-	enum LayerType {CONV, MAX_POOL, FC};
+	enum LayerType {INPUT, CONV, MAX_POOL, FC};
 
 	NetworkLayer(){}
-	NetworkLayer(std::string n, ActivationType a, const std::vector<unsigned> &s);
+	NetworkLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
 	virtual ~NetworkLayer(){std::cout << "Delete NetworkLayer: " << this->layerName() << std::endl;}
 	virtual LayerType layerType() const = 0;
 	virtual void forwardProp() = 0;
@@ -26,22 +27,43 @@ public:
 	std::vector<unsigned> layerSize() const;
 };
 
+class InputLayer : public NetworkLayer{
+private:
+	vizdoom::BufferPtr _state;
+	Tensor3d<Input3dVertex*> *_vertices;
+
+public:
+	InputLayer(){}
+	InputLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
+	virtual LayerType layerType() const;
+	virtual void forwardProp();
+
+	Tensor3d<Input3dVertex*>* vertices() const;
+	void setState(vizdoom::BufferPtr s);
+};
+
 class Conv3dLayer : public NetworkLayer{
 private:
 	unsigned _filterDim;
 	unsigned _filterDepth;
 	unsigned _filterStride;
+
+	std::vector<float> _weights;
+	std::vector<float> _dotProducts;
+	std::vector<float> _activations;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
 public:
 	Conv3dLayer(){}
-	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fd, unsigned fs);
+	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fdi, unsigned fde, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
+	//Tensor1d<Dense1dVertex*> *_vertices;
 	//thrust::device_ptr<float> weightsToDevice() const;
 	//thrust::device_ptr<float> activationsToDevice() const;
 
 	unsigned filterDim() const;
+	unsigned filterDepth() const;
 	unsigned filterStride() const;
 	Tensor3d<Conv3dVertex*>* vertices() const;
 };
@@ -51,19 +73,28 @@ private:
 	unsigned _poolDim;
 	unsigned _poolDepth;
 	unsigned _poolStride;
+
+	std::vector<float> _activations;
 	Tensor3d<Pool3dVertex*> *_vertices;
 
 public:
 	Pool3dLayer(){}
-	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pd, unsigned ps);
+	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned pde, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
+
+	unsigned poolDim() const;
+	unsigned poolDepth() const;
 	Tensor3d<Pool3dVertex*> *vertices() const;
 };
 
 class DenseLayer : public NetworkLayer{
 private:
 	unsigned _numHiddenUnits;
+
+	std::vector<float> _weights;
+	std::vector<float> _dotProducts;
+	std::vector<float> _activations;
 	Tensor1d<Dense1dVertex*> *_vertices;
 
 public:
@@ -71,6 +102,8 @@ public:
 	DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
 	virtual void forwardProp();
+
+	unsigned numHiddenUnits() const;
 	Tensor1d<Dense1dVertex*> *vertices() const;
 };
 
@@ -102,12 +135,13 @@ private:
 	//void conv3d(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, std::string layer_name, unsigned c, vizdoom::BufferPtr result);
 	//void pool3d(vizdoom::BufferPtr input, std::vector<unsigned> prev_size, std::string layer_name, vizdoom::BufferPtr result);
 	//void fc_prop(vizdoom::BufferPtr input, std::string layer_name, vizdoom::BufferPtr result);
-	void firstLayerProp(vizdoom::BufferPtr state);
+	//void firstLayerProp(vizdoom::BufferPtr state);
 	//void singleLayerProp(NetworkLayer *layer);
 
 public:
 	ActionValueNetwork(){}
 	ActionValueNetwork(const NetworkConfig &conf);
+	void init_input(vizdoom::BufferPtr s);
 	std::vector<double> get_action_values(vizdoom::BufferPtr s);
 	//std::vector<std::vector<double>> get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat);
 	//void init_saxe(unsigned num_rows, unsigned num_cols);

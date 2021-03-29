@@ -46,13 +46,19 @@ private:
 
 public:
     //enum VertexType {1D, 3D};
-    enum VertexType {A_RELU, A_LRELU, A_TANH, A_SIGM, P_MAX, P_AVG};
+    enum VertexType {INPUT, A_RELU, A_LRELU, A_TANH, A_SIGM, P_MAX, P_AVG};
     
 	Vertex(){}
     Vertex(double a, Edge *o);
     virtual VertexType vertexType() const = 0;
 	double activation() const;
 	void setActivation(double a);
+};
+
+class Input3dVertex : public Vertex{
+public:
+    using Vertex::Vertex;
+    virtual VertexType vertexType() const;
 };
 
 class Conv3dVertex : public Vertex{

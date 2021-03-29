@@ -60,6 +60,11 @@ void Vertex::setActivation(double a)
 	_activation = a;
 }
 
+Vertex::VertexType Input3dVertex::vertexType() const
+{
+	return Vertex::INPUT;
+}
+
 Conv3dVertex::Conv3dVertex(double ip, double b, double a, Tensor3d<WeightedEdge*> *ie, Edge *o)
 	:Vertex(a, o), _inputEdges(ie), _innerProduct(ip), _bias(b)
 {

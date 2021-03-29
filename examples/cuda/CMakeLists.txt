@@ -46,8 +46,8 @@ include_directories( ${VIZDOOM_INCLUDE_DIR} ${Boost_INCLUDE_DIR} )
 # For compilation ...
 # Specify target & source files to compile it from (matrix.h is optional)
 #cuda_add_executable( main main.cpp matrix.cu )
-#cuda_add_executable( main_cpp Main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/networkelements.cpp ./agent/experiencereplaybuffer.cpp)
-cuda_add_executable( main Main.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cu ./agent/networkelements.cpp )
+#cuda_add_executable( main_cpp main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/networkelements.cpp ./agent/experiencereplaybuffer.cpp)
+cuda_add_executable( main main.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cu ./agent/networkelements.cpp )
 target_link_libraries( main ${VIZDOOM_LIBS} )
 
 #set_target_properties( main
