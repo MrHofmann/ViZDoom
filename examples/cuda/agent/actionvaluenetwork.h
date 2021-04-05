@@ -13,6 +13,8 @@ protected:
 	ActivationType _activationType;
 	std::vector<unsigned> _layerSize;
 	NetworkLayer *_prevLayer;
+	std::vector<float> _activations;
+	BiasVertex *_bias;
 		
 public:
 	enum LayerType {INPUT, CONV, MAX_POOL, FC};
@@ -25,11 +27,14 @@ public:
 	std::string layerName() const;
 	ActivationType activationType() const;
 	std::vector<unsigned> layerSize() const;
+	BiasVertex *biasVertex() const;
+	std::vector<float> activations() const;
 };
 
 class InputLayer : public NetworkLayer{
 private:
 	vizdoom::BufferPtr _state;
+	//std::vector<float> _activations;
 	Tensor3d<Input3dVertex*> *_vertices;
 
 public:
@@ -50,7 +55,8 @@ private:
 
 	std::vector<float> _weights;
 	std::vector<float> _dotProducts;
-	std::vector<float> _activations;
+	//std::vector<float> _activations;
+	std::vector<float> _TDUpdates;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
 public:
@@ -65,6 +71,7 @@ public:
 	unsigned filterDim() const;
 	unsigned filterDepth() const;
 	unsigned filterStride() const;
+	//std::vector<float> activations() const;
 	Tensor3d<Conv3dVertex*>* vertices() const;
 };
 
@@ -74,7 +81,7 @@ private:
 	unsigned _poolDepth;
 	unsigned _poolStride;
 
-	std::vector<float> _activations;
+	//std::vector<float> _activations;
 	Tensor3d<Pool3dVertex*> *_vertices;
 
 public:
@@ -94,7 +101,8 @@ private:
 
 	std::vector<float> _weights;
 	std::vector<float> _dotProducts;
-	std::vector<float> _activations;
+	//std::vector<float> _activations;
+	std::vector<float> _TDUpdates;
 	Tensor1d<Dense1dVertex*> *_vertices;
 
 public:
@@ -123,37 +131,15 @@ private:
 
 	//self.rand_generator = np.random.RandomState(network_config.get("seed"))
 	std::list<NetworkLayer*> _layers;
-	//std::list<std::pair<LayerType, std::pair<std::string, vizdoom::BufferPtr>>> layers;
-	//std::map<std::string, matrix4d> weights_conv;			// [Wc1, Wc2, ... , Wcn]
-	//std::map<std::string, matrix1d> bias_conv;				// [Bc1, Bc2, ... , Bcn]
-	//std::map<std::string, matrix2d> weights_fc;				// [Wfc1, Wfc2, ... , Wfcm]
-	//std::map<std::string, double> bias_fc;					// [Bfc1, Bfc2, ... , Bfcm]
-
-	// This can be parallelized.
-	//double conv_product(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, const matrix3d &filter, unsigned row, unsigned col) const;
-	//double max_pool(vizdoom::BufferPtr state, std::vector<unsigned> input_dim, int buffer_index, unsigned pool_width, unsigned pool_height) const;
-	//void conv3d(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, std::string layer_name, unsigned c, vizdoom::BufferPtr result);
-	//void pool3d(vizdoom::BufferPtr input, std::vector<unsigned> prev_size, std::string layer_name, vizdoom::BufferPtr result);
-	//void fc_prop(vizdoom::BufferPtr input, std::string layer_name, vizdoom::BufferPtr result);
-	//void firstLayerProp(vizdoom::BufferPtr state);
-	//void singleLayerProp(NetworkLayer *layer);
 
 public:
 	ActionValueNetwork(){}
 	ActionValueNetwork(const NetworkConfig &conf);
 	void init_input(vizdoom::BufferPtr s);
-	std::vector<double> get_action_values(vizdoom::BufferPtr s);
+	std::vector<float> get_action_values(vizdoom::BufferPtr s);
 	//std::vector<std::vector<double>> get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat);
 	//void init_saxe(unsigned num_rows, unsigned num_cols);
 	//void init_kaiming();
-
-	//std::map<std::string, matrix4d> get_weights_conv() const;
-	//std::map<std::string, matrix1d> get_bias_conv() const;
-	//std::map<std::string, matrix2d> get_weights_fc() const;
-	//std::map<std::string, double> get_bias_fc() const;
-	//void set_weights(const std::map<std::string, matrix4d> &w_conv, const std::map<std::string, matrix1d> &b_conv, 
-	//		const std::map<std::string, matrix2d> &w_fc, const std::map<std::string, double> &b_fc);
-	//std::list<std::pair<LayerType, std::pair<std::string, vizdoom::BufferPtr>>> get_layers() const;
 };
 
 #endif // ACTIONVALUENETWORK_H

@@ -50,7 +50,7 @@ std::vector<double> DoomAgent::random_action_with_prob(const std::vector<double>
 // This is a softmax policy
 std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
-	std::vector<double> action_values = this->network.get_action_values(state);
+	std::vector<float> action_values = this->network.get_action_values(state);
 	//std::vector<double> action_values = std::vector<double>(8, 0.0);
 	
 	// Compute the preferences by dividing the action-values by the temperature parameter tau

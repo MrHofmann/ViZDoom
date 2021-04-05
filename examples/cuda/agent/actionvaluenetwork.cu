@@ -16,7 +16,8 @@ std::string NetworkLayer::layerName() const
 
 ActivationType NetworkLayer::activationType() const
 {
-	std::cout << "NetworkLayer::activationType" << std::endl;
+	//std::cout << "NetworkLayer::activationType" << std::endl;
+	
 	return _activationType;
 }
 
@@ -26,6 +27,19 @@ std::vector<unsigned> NetworkLayer::layerSize() const
 	return _layerSize;
 }
 
+BiasVertex *NetworkLayer::biasVertex() const
+{
+	//std::cout << "NetworkLayer::biasVertex" << std::endl;
+
+	return _bias;
+}
+
+std::vector<float> NetworkLayer::activations() const
+{
+	//std::cout << "NetworkLayer::activations" << std::endl;
+
+	return _activations;
+}
 
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -34,11 +48,17 @@ InputLayer::InputLayer(std::string ln, ActivationType at, const std::vector<unsi
 {
 	std::cout << "InputLayer::InputLayer" << std::endl;
 
-	_vertices = new Tensor3d<Input3dVertex*>(ls[0], ls[1], ls[2]);
+	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	_activations = std::vector<float>(layerTotalSize + 1);
+	_vertices = new Tensor3d<Input3dVertex*>(_layerSize[0], _layerSize[1], _layerSize[2]);
+	_bias = new BiasVertex(&_activations[layerTotalSize], 0);
 	for(unsigned i=0; i<_layerSize[0]; ++i)
 		for(unsigned j=0; j<_layerSize[1]; ++j)
 			for(unsigned k=0; k<_layerSize[2]; ++k)
-				(*_vertices)[i][j][k] = new Input3dVertex(0, nullptr);
+			{
+				int actIndex = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
+				(*_vertices)[i][j][k] = new Input3dVertex(&_activations[actIndex], 0);
+			}
 }
 
 NetworkLayer::LayerType InputLayer::layerType() const
@@ -71,7 +91,7 @@ Tensor3d<Input3dVertex*>* InputLayer::vertices() const
 
 void InputLayer::setState(vizdoom::BufferPtr s)
 {
-	std::cout << "InputLayer::setState" << std::endl;
+	//std::cout << "InputLayer::setState" << std::endl;
 
 	_state = s;
 }
@@ -88,49 +108,51 @@ Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 	// identical to the ones in the original struct. This new struct has to be deleted upon exit of this constructor to avoid memory leak, but carefuly not to
 	// delete the vertices to which pointers inside this struct point to.
     Tensor3d<Vertex*> *prevVertices = nullptr;
-	if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::INPUT)
+	if(prevLayer->layerType() == NetworkLayer::INPUT)
 		prevVertices = new Tensor3d<Vertex*>(((InputLayer*)prevLayer)->vertices());
-	else if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::CONV)
+	else if(prevLayer->layerType() == NetworkLayer::CONV)
 		//prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
 		prevVertices = new Tensor3d<Vertex*>(((Conv3dLayer*)prevLayer)->vertices());
-	else if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::MAX_POOL)
+	else if(prevLayer->layerType() == NetworkLayer::MAX_POOL)
 		//prevVertices = ((Pool3dLayer*)prevLayer)->vertices();
 		prevVertices = new Tensor3d<Vertex*>(((Pool3dLayer*)prevLayer)->vertices());
-	else if(prevLayer != nullptr)
+	else
 	{
-		std::cout << "Unexpected previous layer type. Previous layer should be CONV or POOL." << std::endl;
+		std::cout << "Unexpected previous layer type. Previous layer should be INPUT, CONV or POOL." << std::endl;
 		std::exit(1);
 	}
 
-	std::vector<unsigned> curLayerSize = layerSize();
-	_weights = std::vector<float>(_filterDim*_filterDim*_filterDepth);
-	_dotProducts = std::vector<float>(curLayerSize[0]*curLayerSize[1]*curLayerSize[2]);
-	_activations = std::vector<float>(curLayerSize[1]*curLayerSize[1]*curLayerSize[2]);
-	_vertices = new Tensor3d<Conv3dVertex*>(curLayerSize[0], curLayerSize[1], curLayerSize[2]);
-	for(unsigned i=0; i<curLayerSize[0]; ++i)
-		for(unsigned j=0; j<curLayerSize[1]; ++j)
-			for(unsigned k=0; k<curLayerSize[2]; ++k)
-			{
-				unsigned filterDepth;
-				if(prevLayer == nullptr)
-					filterDepth = 3; // Depth is 3 for RGB channels.
-				else
-					filterDepth = prevLayer->layerSize()[2];
+	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	int filterTotalSize = _filterDim*_filterDim*_filterDepth;
+	// Total number of weights is 3d-filter size times number of filters plus one bias for each filter. That is for each filter (depth dimension) there are
+	// (filterTotalSize + 1) weights. (filterTotalSize + 1)*_layerSize[2]
+	_weights = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
+	_TDUpdates = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
+	_dotProducts = std::vector<float>(layerTotalSize);
+	_activations = std::vector<float>(layerTotalSize + 1);
 
-				Tensor3d<WeightedEdge*> *inputEdges = new Tensor3d<WeightedEdge*>(_filterDim, _filterDim, filterDepth);
-				Conv3dVertex *v = new Relu3dUnit(0, 0, 0, inputEdges, nullptr);
+	_vertices = new Tensor3d<Conv3dVertex*>(_layerSize[0], _layerSize[1], _layerSize[2]);
+	_bias = new BiasVertex(&_activations[layerTotalSize], 0);
+	for(unsigned i=0; i<_layerSize[0]; ++i)
+		for(unsigned j=0; j<_layerSize[1]; ++j)
+			for(unsigned k=0; k<_layerSize[2]; ++k)
+			{
+				int vIndex = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
+				//Tensor3d<WeightedEdge*> *inputEdges = new Tensor3d<WeightedEdge*>(_filterDim, _filterDim, _filterDepth);
+				Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(filterTotalSize + 1);
+				Conv3dVertex *v = new Relu3dUnit(&_activations[vIndex], 0.0f, &_dotProducts[vIndex], 0.0f, inputEdges);
 				for(unsigned h=0; h<_filterDim; ++h)
 					for(unsigned w=0; w<_filterDim; ++w)
-						for(unsigned d=0; d<filterDepth; ++d)
+						for(unsigned d=0; d<_filterDepth; ++d)
 						{
-							WeightedEdge *e = nullptr;
-							if(prevLayer == nullptr)
-								e = new WeightedEdge(0, 0, 0, nullptr, v);
-							else
-								e = new WeightedEdge(0, 0, 0, (*prevVertices)[i+h][j+w][d], v);
-
-							(*inputEdges)[h][w][d] = e;
+							int eIndex = k*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
+							WeightedEdge *e = new WeightedEdge((*prevVertices)[i+h][j+w][d], v, &_weights[eIndex], &_TDUpdates[eIndex]);
+							//(*inputEdges)[h][w][d] = e;
+							(*inputEdges)[h*_filterDim*_filterDepth + w*_filterDepth + d] = e;
 						}
+
+				int eIndex = k*(filterTotalSize + 1) + filterTotalSize;
+				(*inputEdges)[filterTotalSize] = new WeightedEdge(biasVertex(), v, &_weights[eIndex], &_TDUpdates[eIndex]);
 				(*_vertices)[i][j][k] = v;
 			}
 }
@@ -142,25 +164,49 @@ NetworkLayer::LayerType Conv3dLayer::layerType() const
 	return NetworkLayer::CONV;
 }
 
-struct dp{
+struct Conv3dTransform{
 	float *_input;
-	float *_weight;
-	std::vector<unsigned> _weightSize;
-	int _layerSize;
-	int _prevLayerSize;
+	float *_weights;
+	int _filterDim;
+	int _filterDepth;
+	int _inputHeight;
+	int _inputWidth;
+	int _inputDepth;
+	int _layerHeight;
+	int _layerWidth;
+	int _layerDepth;
 
-	dp(float *i, float *w, const std::vector<unsigned> ws, int ls, int pls)
-		:_input(i), _weight(w), _weightSize(ws), _layerSize(ls), _prevLayerSize(pls) {}
-	__host__ __device__ float operator()(size_t idx)
+	Conv3dTransform(float *i, float *w, int fdi, int fde, int ih, int iw, int id, int lh, int lw, int ld)
+		:_input(i), _weights(w), _filterDim(fdi), _filterDepth(fde), 
+		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
+		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
+	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
 	{
+		// vidx = i*outputWidth*outputDepth + j*outputDepth + k
+		int i = vidx/(_layerWidth*_layerDepth);
+		int jk = vidx - (i*_layerWidth*_layerDepth);
+		int j = jk/_layerDepth;
+		int k = jk - (j*_layerDepth);
+
+		//weightsTotalSize = _weightsHeight*_weightsWidth*_weightsDepth + 1;
+		//int eIndex = k*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
+		int widx = k*(_filterDim*_filterDim*_filterDepth + 1);
+		// Input vertex index should be the same as the output one.
+		int iidx = i*_inputWidth*_inputDepth + j*_inputDepth + k;
 		float dotProduct = 0.0f;
 		float activation;
-		for(unsigned i=0; i<_weightSize[0]; ++i)
-			for(unsigned j=0; j<_weightSize[1]; ++j)
-				for(unsigned k=0; k<_weightSize[2]; ++k)
+		for(unsigned h=0; h<_filterDim; ++h)
+			for(unsigned w=0; w<_filterDim; ++w)
+				for(unsigned d=0; d<_filterDepth; ++d)
 				{
-					
+					int wx = widx + h*_filterDim*_filterDepth + w*_filterDepth + d;
+					int ix = iidx + h*_inputWidth*_inputDepth + w*_inputDepth + d;
+					dotProduct += _input[ix]*_weights[wx];
 				}
+		
+		dotProduct += _weights[widx + _filterDim*_filterDim*_filterDepth];
+		activation = (dotProduct > 0)? dotProduct : 0;
+		return thrust::make_tuple(dotProduct, activation);
 	}
 };
 
@@ -168,46 +214,27 @@ void Conv3dLayer::forwardProp()
 {
 	std::cout << "Conv3dLayer::forwardProp" << std::endl;
 
-	std::vector<unsigned> weightSize = {_filterDim, _filterDim, _prevLayer->layerSize()[2]};
 	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
-	int prevLayerSize = _prevLayer->layerSize()[0]*_prevLayer->layerSize()[1]*_prevLayer->layerSize()[2];
-	
-	// thrust::device_ptr<float> input = activationsToDevice();
-	// thrust::device_ptr<float> weight = weightsToDevice();
-	thrust::device_vector<float> input(prevLayerSize);
-	thrust::device_vector<float> weight(weightSize[0]*weightSize[1]*weightSize[2]*layerSize);
-	thrust::device_vector<float> dotProduct(layerSize);
-	thrust::device_vector<float> activation(layerSize);
-/*
-	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), dotProduct.begin(),
-			dp(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weight.data()), weightSize, layerSize, prevLayerSize));
-	cudaDeviceSynchronize();
-*/
+	int inputHeight = _prevLayer->layerSize()[0];
+	int inputWidth = _prevLayer->layerSize()[1];
+	int inputDepth = _prevLayer->layerSize()[2];
 
-//	for(unsigned i=0; i<(*_vertices).size(); ++i)
-//		for(unsigned j=0; j<(*_vertices)[i].size(); ++j)
-//			for(unsigned k=0; k<(*_vertices)[i][j].size(); ++k)
-//			{
-//				// Parallelize this block.
-//				Conv3dVertex *v = (*_vertices)[i][j][k];
-//				double innerProduct = 0;
-//				Tensor3d<WeightedEdge*> *vInputEdges = v->inputEdges();
-//				for(unsigned h=0; h<(*vInputEdges).size(); ++h)
-//					for(unsigned w=0; w<(*vInputEdges)[h].size(); ++w)
-//						for(unsigned d=0; d<(*vInputEdges)[h][w].size(); ++d)
-//						{
-//							WeightedEdge *e = (*vInputEdges)[h][w][d];
-//							//double inputProduct = e->inputVertex()->activation() * e->weight();
-//							//v->setInputProduct(h, w, d, inputProduct);
-//							//innerProduct += (*(v->inputProducts()))[h][w][d];
-//							innerProduct += e->inputVertex()->activation() * e->weight();
-//						}
-//				
-//				innerProduct += v->bias();
-//				v->setInnerProduct(innerProduct);
-//                //switch(v->activation_type){...}
-//	            v->setActivation(std::max(0.0, innerProduct));
-//			}
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> input(act.begin(), act.end());
+	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+	thrust::device_vector<float> dotProducts(layerSize);
+	thrust::device_vector<float> activations(layerSize);
+
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
+		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
+		Conv3dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
+			_filterDim, _filterDepth, inputHeight, inputWidth, inputDepth, _layerSize[0], _layerSize[1], _layerSize[2]));
+	cudaDeviceSynchronize();
+
+	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
+	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
+	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
+	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 }
 
 /*thrust::device_ptr<float> Conv3dLayer::weightsToDevice() const
@@ -235,11 +262,6 @@ void Conv3dLayer::forwardProp()
 	//cudaFree(rawPtr);
 	
 	return devPtr;
-}*/
-
-/*thrust::device_ptr<float> Conv3dLayer::activationsToDevice() const
-{
-
 }*/
 
 unsigned Conv3dLayer::filterDim() const
@@ -275,29 +297,29 @@ Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 {
 	std::cout << "Pool3dLayer::Pool3dLayer" << std::endl;
 
-	if(prevLayer == nullptr || prevLayer->layerType() != NetworkLayer::CONV)
+	if(prevLayer->layerType() != NetworkLayer::CONV)
 	{
-		std::cout << "Unexpected previous layer type. Previous layer must be conv." << std::endl;
+		std::cout << "Unexpected previous layer type. Previous layer must be CONV." << std::endl;
 		std::exit(1);
 	}
 
-	unsigned poolDepth = prevLayer->layerSize()[2];
 	Tensor3d<Conv3dVertex*> *prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
-
-	std::vector<unsigned> curLayerSize = layerSize();
-	_activations = std::vector<float>(curLayerSize[0]*curLayerSize[1]*curLayerSize[2]);
-	_vertices = new Tensor3d<Pool3dVertex*>(curLayerSize[0], curLayerSize[1], curLayerSize[2]);
-	for(unsigned i=0; i<curLayerSize[0]; ++i)
-		for(unsigned j=0; j<curLayerSize[1]; ++j)
-			for(unsigned k=0; k<curLayerSize[2]; ++k)
+	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	_activations = std::vector<float>(layerTotalSize + 1);
+	_vertices = new Tensor3d<Pool3dVertex*>(_layerSize[0], _layerSize[1], _layerSize[2]);
+	_bias = new BiasVertex(&_activations[layerTotalSize], 0);
+	for(unsigned i=0; i<_layerSize[0]; ++i)
+		for(unsigned j=0; j<_layerSize[1]; ++j)
+			for(unsigned k=0; k<_layerSize[2]; ++k)
 			{
-				Tensor3d<WeightlessEdge*> *inputEdges = new Tensor3d<WeightlessEdge*>(_poolDim, _poolDim, poolDepth);
-				MaxPool3dUnit *v = new MaxPool3dUnit(0, inputEdges, nullptr);
+				int vIndex = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
+				Tensor3d<UnweightedEdge*> *inputEdges = new Tensor3d<UnweightedEdge*>(_poolDim, _poolDim, _poolDepth);
+				MaxPool3dUnit *v = new MaxPool3dUnit(&_activations[vIndex], 0, inputEdges);
 				for(unsigned h=0; h<_poolDim; ++h)
 					for(unsigned w=0; w<_poolDim; ++w)
-						for(unsigned d=0; d<poolDepth; ++d)
+						for(unsigned d=0; d<_poolDepth; ++d)
 						{
-							WeightlessEdge *e = new WeightlessEdge((*prevVertices)[i+h][j+w][d], v);
+							UnweightedEdge *e = new UnweightedEdge((*prevVertices)[i+h][j+w][d], v);
 							(*inputEdges)[h][w][d] = e;
 						}				
 
@@ -312,29 +334,67 @@ NetworkLayer::LayerType Pool3dLayer::layerType() const
 	return NetworkLayer::MAX_POOL;
 }
 
+struct Pool3dTransform{
+	float *_input;
+	int _poolDim;
+	int _poolDepth;
+	int _inputHeight;
+	int _inputWidth;
+	int _inputDepth;
+	int _layerHeight;
+	int _layerWidth;
+	int _layerDepth;
+
+	Pool3dTransform(float *i, int pdi, int pde, int ih, int iw, int id, int lh, int lw, int ld)
+		:_input(i), _poolDim(pdi), _poolDepth(pde), 
+		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
+		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
+	__host__ __device__  float operator()(size_t vidx)
+	{
+		// vidx = i*outputWidth*outputDepth + j*outputDepth + k
+		int i = vidx/(_layerWidth*_layerDepth);
+		int jk = vidx - (i*_layerWidth*_layerDepth);
+		int j = jk/_layerDepth;
+		int k = jk - (j*_layerDepth);
+
+		// Input vertex index should be the same as the output one.
+		int iidx = i*_inputWidth*_inputDepth + j*_inputDepth + k;
+		float activation = _input[0];
+		for(unsigned h=0; h<_poolDim; ++h)
+			for(unsigned w=0; w<_poolDim; ++w)
+				for(unsigned d=0; d<_poolDepth; ++d)
+				{
+					int ix = iidx + h*_inputWidth*_inputDepth + w*_inputDepth + d;
+					if(_input[ix] > activation)
+						activation = _input[ix];
+				}		
+
+		return activation;
+	}
+
+};
+
 void Pool3dLayer::forwardProp()
 {
 	std::cout << "Pool3dLayer::forwardProp" << std::endl;
 
-    for(unsigned i=0; i<(*_vertices).size(); ++i)
-        for(unsigned j=0; j<(*_vertices)[i].size(); ++j)
-            for(unsigned k=0; k<(*_vertices)[i][j].size(); ++k)
-            {
-              	// Parallelize this block.
-                Pool3dVertex *v = (*_vertices)[i][j][k];
-				double maxActivation = std::numeric_limits<double>::min();
-				Tensor3d<WeightlessEdge*> *inputEdges = v->inputEdges();
-                for(unsigned h=0; h<(*inputEdges).size(); ++h)
-                	for(unsigned w=0; w<(*inputEdges)[h].size(); ++w)
-                    	for(unsigned d=0; d<(*inputEdges)[h][w].size(); ++d)
-                        {
-                            WeightlessEdge *e = (*inputEdges)[h][w][d];
-							if(e->inputVertex()->activation() > maxActivation)
-								maxActivation = e->inputVertex()->activation();
-                        }
-                //switch(v->activation_type){...}
-				v->setActivation(maxActivation);
-			}
+	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	int inputHeight = _prevLayer->layerSize()[0];
+	int inputWidth = _prevLayer->layerSize()[1];
+	int inputDepth = _prevLayer->layerSize()[2];
+
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> input(act.begin(), act.end());
+	thrust::device_vector<float> activations(layerSize);
+
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
+		activations.begin(), Pool3dTransform(thrust::raw_pointer_cast(input.data()), _poolDim, _poolDepth, 
+			inputHeight, inputWidth, inputDepth, _layerSize[0], _layerSize[1], _layerSize[2]));
+	cudaDeviceSynchronize();
+
+	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
+	// Maybe try thrust::host_vector<float> as member vector as well. Also, make sure location of output vector is not changed.
+	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 }
 
 unsigned Pool3dLayer::poolDim() const
@@ -366,33 +426,45 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 	std::cout << "DenseLayer::DenseLayer" << std::endl;
 
 	std::vector<unsigned> prevLayerSize = prevLayer->layerSize();
-	int s = 1;
+	int prevTotalSize = 1;
 	for(unsigned i=0; i<prevLayerSize.size(); ++i)
-		s *= prevLayerSize[i];
+		prevTotalSize *= prevLayerSize[i];
 
 	std::vector<unsigned> curLayerSize = layerSize();
-	_weights = std::vector<float>(s*_numHiddenUnits);
+	_weights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
+	_TDUpdates = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_dotProducts = std::vector<float>(_numHiddenUnits);
-	_activations = std::vector<float>(_numHiddenUnits);
+	_activations = std::vector<float>(_numHiddenUnits + 1);
+
 	_vertices = new Tensor1d<Dense1dVertex*>(curLayerSize[0]);
+	_bias = new BiasVertex(&_activations[_numHiddenUnits], 0);
+	
+	BiasVertex *prevBias = prevLayer->biasVertex();
 	for(unsigned i=0; i<curLayerSize[0]; ++i)
 	{
-		//Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(prevLayerSize[0]);
 		Dense1dVertex *v;
-		if(prevLayer != nullptr && prevLayer->layerType() == NetworkLayer::FC)
+		if(prevLayer->layerType() == NetworkLayer::FC)
 		{
 			Tensor1d<Dense1dVertex*> *prevVertices = ((DenseLayer*)prevLayer)->vertices();
             std::vector<unsigned> prevLayerSize = prevLayer->layerSize();
-			Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(prevLayerSize[0]);
-			v = new Relu1dUnit(0, 0, 0, inputEdges, nullptr);
+			Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(prevLayerSize[0] + 1);
+			v = new Relu1dUnit(&_activations[i], 0, &_TDUpdates[i], inputEdges);
             for(unsigned j=0; j<prevLayerSize[0]; ++j)
 			{
+				int eIndex = i*(prevTotalSize + 1) + j;
+					//	std::cout << eIndex << " = " << _weights.size() << " = " << &_weights[eIndex] << std::endl;
 				Vertex *u = (*prevVertices)[j];
-				WeightedEdge *e = new WeightedEdge(0, 0, 0, u, v);
+				WeightedEdge *e = new WeightedEdge(u, v, &_weights[eIndex], &_TDUpdates[eIndex]);
 				(*inputEdges)[j] = e;
 			}
+		
+			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
+					//	std::cout << eIndex << " : " << _weights.size() << " : " << &_weights[eIndex] << std::endl;
+			WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
+			(*inputEdges)[prevTotalSize] = e;
+
 		}
-	    else if(prevLayer != nullptr)
+	    else
 		{
 			// Same issue as in Conv3dLayer::Conv3dLayer. Will have to decide at some point whether should prevVertices be used as structs or pointers to structs. In
 			// case pointers are NOT used then consider replacing pointers to vertices structs with only structs in Conv3dLayer and DenseLayer.
@@ -410,16 +482,22 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 			}
 
 			std::vector<unsigned> prevLayerSize = prevLayer->layerSize();
-			Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(prevLayerSize[0]*prevLayerSize[1]*prevLayerSize[2]);
-			v = new Relu1dUnit(0, 0, 0, inputEdges, nullptr);
+			Tensor1d<WeightedEdge*> *inputEdges = new Tensor1d<WeightedEdge*>(prevTotalSize + 1);
+			v = new Relu1dUnit(&_activations[i], 0, &_dotProducts[i], inputEdges);
 			for(unsigned h=0; h<prevLayerSize[0]; ++h)
 				for(unsigned w=0; w<prevLayerSize[1]; ++w)
             		for(unsigned d=0; d<prevLayerSize[2]; ++d)
                 	{
-	           			WeightedEdge *e = new WeightedEdge(0, 0, 0, (*prevVertices)[h][w][d], v);
-						int inputEdgesIndex = h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d;
-						(*inputEdges)[inputEdgesIndex] = e;
+						int eIndex = i*(prevTotalSize + 1) + h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d;
+					//	std::cout << eIndex << " - " << _weights.size() << " - " << &_weights[eIndex] << std::endl;
+	           			WeightedEdge *e = new WeightedEdge((*prevVertices)[h][w][d], v, &_weights[eIndex], &_TDUpdates[eIndex]);
+						(*inputEdges)[h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d] = e;
                 	}
+
+			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
+						//std::cout << eIndex << " | " << _weights.size() << " | " << &_weights[eIndex] << std::endl;
+	        WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
+			(*inputEdges)[prevTotalSize] = e;
 		}
 
 		(*_vertices)[i] = v;
@@ -433,29 +511,69 @@ NetworkLayer::LayerType DenseLayer::layerType() const
 	return NetworkLayer::FC;
 }
 
+struct Dense1dTransform{
+	float *_input;
+	float *_weights;
+	int _inputHeight;
+	int _inputWidth;
+	int _inputDepth;
+	int _layerHeight;
+	int _layerWidth;
+	int _layerDepth;
+
+	Dense1dTransform(float *i, float *w, int ih, int iw, int id, int lh, int lw, int ld)
+		:_input(i), _weights(w),
+		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
+		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
+	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
+	{
+		// vidx = i*outputWidth*outputDepth + j*outputDepth + k
+		//int i = vidx/(_layerWidth*_layerDepth);
+		//int jk = vidx - (i*_layerWidth*_layerDepth);
+		//int j = jk/_layerDepth;
+		//int k = jk - (j*_layerDepth);
+
+		// inputSize = inputHeight*inputWidth*inputDepth + bias
+		int inputTotalSize = _inputHeight*_inputWidth*_inputDepth + 1;
+		int widx = vidx*inputTotalSize;
+		float dotProduct = 0.0f;
+		float activation;
+		for(unsigned h=0; h<inputTotalSize; ++h)
+		{
+			int wx = widx + h;
+			dotProduct += _input[h]*_weights[wx];
+		}
+		
+		activation = (dotProduct > 0)? dotProduct : 0;
+		return thrust::make_tuple(dotProduct, activation);
+	}
+};
+
 void DenseLayer::forwardProp()
 {
 	std::cout << "DenseLayer::forwardProp" << std::endl;
 
-	for(unsigned i=0; i<(*_vertices).size(); ++i)
-	{
-		// Parallelize this block.
-		Dense1dVertex *v = (*_vertices)[i];
-		//Tensor1d<double> *inputProducts = v->inputProducts();
-		Tensor1d<WeightedEdge*> *inputEdges = v->inputEdges();
-		double innerProduct = 0;
-		for(unsigned j=0; j<(*inputEdges).size(); ++j)
-		{
-			WeightedEdge *e = (*inputEdges)[j];
-			//double inputProduct = e->weight() * e->inputVertex()->activation();
-			//innerProduct += inputProduct;
-			//v->setInputProduct(j, inputProduct);
-			innerProduct += e->weight() * e->inputVertex()->activation();
-		}
+	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	int inputHeight = _prevLayer->layerSize()[0];
+	int inputWidth = _prevLayer->layerSize()[1];
+	int inputDepth = _prevLayer->layerSize()[2];
 
-		v->setInnerProduct(innerProduct + v->bias());
-		v->setActivation(std::max(0.0, innerProduct));
-	}
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> input(act.begin(), act.end());
+	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+	thrust::device_vector<float> dotProducts(layerSize);
+	thrust::device_vector<float> activations(layerSize);
+
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
+		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
+		Dense1dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
+			inputHeight, inputWidth, inputDepth, _layerSize[0], _layerSize[1], _layerSize[2]));
+	cudaDeviceSynchronize();
+
+	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
+	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
+	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
+	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 }
 
 unsigned DenseLayer::numHiddenUnits() const
@@ -472,179 +590,6 @@ Tensor1d<Dense1dVertex*>* DenseLayer::vertices() const
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------//
-/*double ActionValueNetwork::conv_product(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, const matrix3d &filter, unsigned row, unsigned col) const
-{
-	//std::cout << "ActionValueNetwork::conv_product" << std::endl;
-
-	unsigned input_height = prev_size[0];
-	unsigned input_width = prev_size[1];
-	unsigned input_depth = prev_size[2];
-
-	std::vector<uint8_t> s = *state;
-	double product = 0;
-	for(unsigned i=0; i<filter.size(); ++i)
-		for(unsigned j=0; j<filter[i].size(); ++j)
-		{
-			int current_index = (row+i)*(input_width*input_depth)+(col+j)*input_depth;
-			double c1 = s[current_index]*filter[i][j][0];
-			double c2 = s[current_index+1]*filter[i][j][1];
-			double c3 = s[current_index+2]*filter[i][j][2];
-			product += c1 + c2 + c3;
-		}
-
-	return product;
-}*/
-
-
-/*double ActionValueNetwork::max_pool(vizdoom::BufferPtr input, std::vector<unsigned> input_dim, int buffer_index, 
-		unsigned pool_width, unsigned pool_height) const
-{
-	//std::cout << "ActionValueNetwork::max_pool" << std::endl;
-	
-	double result = std::numeric_limits<double>::min();
-	for(unsigned i=0; i<pool_height; ++i)
-		for(unsigned j=0; j<pool_width; ++j)
-		{
-			int current_index = buffer_index+(input_dim[2]*j)+(input_dim[1]*input_dim[2]*i);
-			if(current_index >= (*input).size())
-				std::cout << "current index out of bounds: " << current_index << " " << (*input).size() << std::endl;
-			if((*input)[current_index] > result)
-				result = (*input)[current_index];
-		}		
-
-	return result;
-}*/
-
-/*void ActionValueNetwork::conv3d(vizdoom::BufferPtr state, std::vector<unsigned> prev_size, std::string layer_name, 
-		unsigned c, vizdoom::BufferPtr result)
-{
-	std::cout << "ActionValueNetwork::conv3d" << std::endl;
-
-	unsigned input_height = prev_size[0];
-	unsigned input_width = prev_size[1];
-	unsigned input_depth = prev_size[2];
-	
-	unsigned result_height = this->layer_sizes[layer_name][0];
-	unsigned result_width  = this->layer_sizes[layer_name][1];
-	unsigned result_depth  = this->layer_sizes[layer_name][2];
-
-	unsigned current_row = 0;
-	unsigned current_col = 0;
-	for(unsigned i=0; i<result_height; ++i)
-	{
-		current_row = i*this->filter_strides[layer_name];
-		for(unsigned j=0; j<result_width; ++j)
-		{
-			current_col = j*this->filter_strides[layer_name]; 
-			int output_index = i*result_width*result_depth + j*result_depth + c;
-			// Also shoud check if segmentation fault can occur when accessing state neurons here with current row and col. 
-			// Update: Should be ok now.
-			double r = conv_product(state, prev_size, this->weights_conv[layer_name][c], current_row, current_col)+this->bias_conv[layer_name][c];
-			switch(this->activations[layer_name]){
-				case RELU:
-					(*result)[output_index] = (uint8_t)std::max(0.0, r);
-					break;
-				case LRELU:
-					if(r > 0)
-						(*result)[output_index] = (uint8_t)r;
-					else
-						(*result)[output_index] = (uint8_t)(0.01*r);
-					break;
-				default:
-					(*result)[output_index] = (uint8_t)r;
-					break;
-			}
-		}
-	}
-}*/
-
-/*void ActionValueNetwork::pool3d(vizdoom::BufferPtr input, std::vector<unsigned> prev_size, std::string layer_name, vizdoom::BufferPtr result)
-{
-	std::cout << "ActionValueNetwork::pool3d" << std::endl;
-
-	unsigned output_height = this->layer_sizes[layer_name][0]; 
-	unsigned output_width = this->layer_sizes[layer_name][1]; 
-	unsigned output_depth = this->layer_sizes[layer_name][2];
-	unsigned pool_size = this->pool_dim[layer_name];
-	
-	int buffer_index = 0;
-	for(unsigned i=0; i<output_height; ++i)
-	{
-		int rows = i*output_width*output_depth;
-		for(unsigned j=0; j<output_width; ++j)
-		{			
-			int cols = j*output_depth;
-			for(unsigned k=0; k<output_depth; ++k)
-			{
-				(*result)[rows + cols + k] = max_pool(input, prev_size, buffer_index, pool_size, pool_size);
-				buffer_index++;
-			}
-			if((buffer_index/prev_size[2])%prev_size[1] + pool_size > prev_size[1])
-				buffer_index += prev_size[2];
-			//if(buffer_index + pool_size exceedes number of input rows) ... This may not be needed since output buffer is already complete at this point.
-			else
-				buffer_index += prev_size[2]*(this->pool_strides[layer_name]-1);
-		}
-		buffer_index += prev_size[2]*prev_size[1]*(this->pool_strides[layer_name]-1);
-	}
-}*/
-
-/*void ActionValueNetwork::fc_prop(vizdoom::BufferPtr input, std::string layer_name, vizdoom::BufferPtr result)
-{
-	std::cout << "ActionValueNetwork::fc_prop" << std::endl;
-
-	for(unsigned j=0; j<(*result).size(); ++j)
-	{
-		(*result)[j] = this->bias_fc[layer_name];
-		this->weights_fc[layer_name][0][j];
-		for(unsigned i=0; i<(*input).size(); ++i)
-			(*result)[j] += (*input)[i]*this->weights_fc[layer_name][i][j];		
-	}
-}*/
-
-/*
-void ActionValueNetwork::firstLayerProp(vizdoom::BufferPtr s)
-{
-	std::cout << "ActionValueNetwork::firstLayerProp" << std::endl;
-
-	unsigned inputHeight = _stateDim[0];
-	unsigned inputWidth = _stateDim[1];
-	unsigned inputDepth = _stateDim[2];
-
-	NetworkLayer *firstLayer = *_layers.begin();
-	std::vector<unsigned> firstLayerSize = firstLayer->layerSize();
-	Tensor3d<Conv3dVertex*> *firstVertices = ((Conv3dLayer*)firstLayer)->vertices();
-	unsigned filterDim = ((Conv3dLayer*)firstLayer)->filterDim();
-	unsigned filterStride = ((Conv3dLayer*)firstLayer)->filterStride();
-
-	for(unsigned i=0; i<(*firstVertices).size(); ++i)
-		for(unsigned j=0; j<(*firstVertices)[i].size(); ++j)
-		{
-			// Place where the top left corner of the filter is placed in the input.
-			int curInputIndex = (i*filterStride)*inputWidth*inputDepth + (j*filterStride)*inputDepth;
-			for(unsigned k=0; k<(*firstVertices)[i][j].size(); ++k)
-			{
-				// Parallelize this block.
-				Conv3dVertex *v = (*firstVertices)[i][j][k];
-				double innerProduct = 0;
-				//std::cout << filterDim << " " << inputDepth << std::endl;
-				for(unsigned h=0; h<filterDim; ++h)
-					for(unsigned w=0; w<filterDim; ++w)
-						for(unsigned d=0; d<inputDepth; ++d)
-						{
-							WeightedEdge *e = (*(v->inputEdges()))[h][w][d];
-							//double edgeProduct = e->weight() * (*s)[i + h*inputWidth*inputDepth + w*inputDepth + d];
-							//v->setInputProduct(h, w, d, edgeProduct);
-							//innerProduct += edgeProduct;
-							innerProduct += e->weight() * (*s)[i + h*inputWidth*inputDepth + w*inputDepth + d];
-						}
-
-				v->setInnerProduct(innerProduct + v->bias());
-				//switch(v->activation_type){...}
-				v->setActivation(std::max(0.0, innerProduct));
-			}
-		}
-}*/
 
 ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 	:_stateDim(conf.state_dim), _numActions(conf.num_actions)
@@ -758,7 +703,7 @@ void ActionValueNetwork::init_input(vizdoom::BufferPtr s)
 }
 
 // state -> conv3d -> max_pool -> conv3d -> max_pool -> fully_connected -> fully_connected -> softmax
-std::vector<double> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
+std::vector<float> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 {
 	std::cout << "ActionValueNetwork::get_action_values" << std::endl;
 	
@@ -769,9 +714,8 @@ std::vector<double> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 		// activation(prev_layer*W + b)
 		(*it)->forwardProp();
 
-	// return layers.back().second; // (BufferPtr)
-	//return std::vector<double>((*prev_layer).begin(), (*prev_layer).end());
-	return std::vector<double>();
+	std::vector<float> actionValues = _layers.back()->activations();
+	return std::vector<float>(actionValues.begin(), actionValues.end()-1);
 }
 
 
