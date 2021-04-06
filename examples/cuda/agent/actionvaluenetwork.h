@@ -55,7 +55,6 @@ private:
 
 	std::vector<float> _weights;
 	std::vector<float> _dotProducts;
-	//std::vector<float> _activations;
 	std::vector<float> _TDUpdates;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
@@ -70,9 +69,11 @@ public:
 
 	unsigned filterDim() const;
 	unsigned filterDepth() const;
-	unsigned filterStride() const;
-	//std::vector<float> activations() const;
+	unsigned filterStride() const;	
+	std::vector<float> weights() const;
+	std::vector<float> dotProducts() const;
 	Tensor3d<Conv3dVertex*>* vertices() const;
+	void setWeights(const std::vector<float> &w);
 };
 
 class Pool3dLayer : public NetworkLayer{
@@ -81,7 +82,6 @@ private:
 	unsigned _poolDepth;
 	unsigned _poolStride;
 
-	//std::vector<float> _activations;
 	Tensor3d<Pool3dVertex*> *_vertices;
 
 public:
@@ -101,7 +101,6 @@ private:
 
 	std::vector<float> _weights;
 	std::vector<float> _dotProducts;
-	//std::vector<float> _activations;
 	std::vector<float> _TDUpdates;
 	Tensor1d<Dense1dVertex*> *_vertices;
 
@@ -112,7 +111,10 @@ public:
 	virtual void forwardProp();
 
 	unsigned numHiddenUnits() const;
+	std::vector<float> weights() const;
+	std::vector<float> dotProducts() const;
 	Tensor1d<Dense1dVertex*> *vertices() const;
+	void setWeights(const std::vector<float> &w);
 };
 
 class ActionValueNetwork{
@@ -137,6 +139,7 @@ public:
 	ActionValueNetwork(const NetworkConfig &conf);
 	void init_input(vizdoom::BufferPtr s);
 	std::vector<float> get_action_values(vizdoom::BufferPtr s);
+	std::list<NetworkLayer*> get_layers() const;
 	//std::vector<std::vector<double>> get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat);
 	//void init_saxe(unsigned num_rows, unsigned num_cols);
 	//void init_kaiming();

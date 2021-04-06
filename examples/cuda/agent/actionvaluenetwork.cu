@@ -285,10 +285,32 @@ unsigned Conv3dLayer::filterStride() const
 	return _filterStride;
 }
 
+std::vector<float> Conv3dLayer::weights() const
+{
+	std::cout << "Conv3dLayer::weights" << std::endl;
+
+	return _weights;
+}
+
+std::vector<float> Conv3dLayer::dotProducts() const
+{
+	std::cout << "Conv3dLayer::dotProducts" << std::endl;
+
+	return _dotProducts;
+}
+
 Tensor3d<Conv3dVertex*> *Conv3dLayer::vertices() const
 {
 	//std::cout << "Conv3dLayer::vertices" << std::endl;
 	return _vertices;
+}
+
+void Conv3dLayer::setWeights(const std::vector<float> &w)
+{
+	std::cout << "Conv3dLayer::setWeights" << std::endl;
+
+	_weights.clear();
+	std::copy(w.begin(), w.end(), std::back_inserter(_weights));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -583,10 +605,32 @@ unsigned DenseLayer::numHiddenUnits() const
 	return _numHiddenUnits;
 }
 
+std::vector<float> DenseLayer::weights() const
+{
+	std::cout << "DenseLayer::weights" << std::endl;
+
+	return _weights;
+}
+
+std::vector<float> DenseLayer::dotProducts() const
+{
+	std::cout << "DenseLayer::dotProducts" << std::endl;
+
+	return _dotProducts;
+}
+
 Tensor1d<Dense1dVertex*>* DenseLayer::vertices() const
 {
 	//std::cout << "DenseLayer::vertices" << std::endl;
 	return _vertices;
+}
+
+void DenseLayer::setWeights(const std::vector<float> &w)
+{
+	std::cout << "DenseLayer::setWeights" << std::endl;
+
+	_weights.clear();
+	std::copy(w.begin(), w.end(), std::back_inserter(_weights));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -764,12 +808,12 @@ std::vector<float> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 	// Continue here tomorrow.
 }*/
 
-/*std::list<std::pair<LayerType, std::pair<std::string, vizdoom::BufferPtr>>> ActionValueNetwork::get_layers() const
+std::list<NetworkLayer*> ActionValueNetwork::get_layers() const
 {
 	std::cout << "ActionValueNetwork::get_layers" << std::endl;
 
-	return this->layers;
-}*/
+	return _layers;
+}
 
 /*std::map<std::string, matrix4d> ActionValueNetwork::get_weights_conv() const
 {

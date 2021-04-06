@@ -49,6 +49,8 @@ include_directories( ${VIZDOOM_INCLUDE_DIR} ${Boost_INCLUDE_DIR} )
 #cuda_add_executable( main_cpp main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/networkelements.cpp ./agent/experiencereplaybuffer.cpp)
 cuda_add_executable( main main.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cu ./agent/networkelements.cpp )
 target_link_libraries( main ${VIZDOOM_LIBS} )
+cuda_add_executable( test test.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cu ./agent/networkelements.cpp )
+target_link_libraries( test ${VIZDOOM_LIBS} )
 
 #set_target_properties( main
 #	PROPERTIES
