@@ -43,15 +43,11 @@ class Vertex{
 private:
     float *_activation;
 	float _inputGrad;
-	// Output edge pointer is probably redundant.
-    //Edge *_outputEdge;
 
 public:
-    //enum VertexType {1D, 3D};
     enum VertexType {BIAS, INPUT, A_RELU, A_LRELU, A_TANH, A_SIGM, P_MAX, P_AVG};
     
 	Vertex(){}
-    //Vertex(double a, Edge *o);
 	Vertex(float *a, float ing);
     virtual VertexType vertexType() const = 0;
 	float activation() const;
@@ -74,15 +70,12 @@ class Conv3dVertex : public Vertex{
 private:
     float *_dotProduct;
 	float _actGrad;
-	//double _bias;
     Tensor1d<WeightedEdge*> *_inputEdges;
 
 public:
     Conv3dVertex(){}
-    //Conv3dVertex(double ip, double b, double a, Tensor3d<WeightedEdge*> *ie, Edge *o);
 	Conv3dVertex(float *a, float ing, float *dp, float ag, Tensor1d<WeightedEdge*> *ie);
 	Tensor1d<WeightedEdge*> *inputEdges() const;
-	//double bias() const;
 	void setDotProduct(float dp);
 };
 
@@ -94,12 +87,11 @@ public:
 
 class Pool3dVertex : public Vertex{
 private:
-    Tensor3d<UnweightedEdge*> *_inputEdges;
+    Tensor2d<UnweightedEdge*> *_inputEdges;
 
 public:
-    //Pool3dVertex(double a, Tensor3d<WeightlessEdge*> *ie, Edge *o);
-	Pool3dVertex(float *a, float ing, Tensor3d<UnweightedEdge*> *ie);
-	Tensor3d<UnweightedEdge*> *inputEdges() const;
+	Pool3dVertex(float *a, float ing, Tensor2d<UnweightedEdge*> *ie);
+	Tensor2d<UnweightedEdge*> *inputEdges() const;
 };
 
 class MaxPool3dUnit : public Pool3dVertex{
@@ -111,16 +103,13 @@ public:
 class Dense1dVertex : public Vertex{
 private:
     float *_dotProduct;
-	//double _bias;
     Tensor1d<WeightedEdge*> *_inputEdges;
 
 public:
     Dense1dVertex(){}
-    //Dense1dVertex(double ip, double b, double a, Tensor1d<WeightedEdge*> *ie, Edge *o);
 	Dense1dVertex(float *a, float ing, float *dp, Tensor1d<WeightedEdge*> *ie);
 	Tensor1d<WeightedEdge*> *inputEdges() const;
 	void setDotProduct(float dp);
-	//double bias() const;
 };
 
 class Relu1dUnit : public Dense1dVertex{

@@ -9,61 +9,7 @@
 
 
 int main() 
-{	
-	//std::map<std::string, matrix4d> weights_conv;
-	//std::map<std::string, matrix1d> bias_conv;
-	//std::map<std::string, matrix2d> weights_fc;
-	//std::map<std::string, double> bias_fc;
-	
-	//matrix4d l1_filters;
-	//matrix1d l1_biases;
-	//for(unsigned i=0; i<3; ++i)
-	//{
-	//	//l1_filters.push_back({{{1, 2}, {3, 4}}, {{4, 3}, {2, 1}}, {{1, 4}, {3, 2}}});
-	//	l1_filters.push_back({{{1, 4, 1}, {2, 3, 4}}, {{3, 2, 3}, {4, 1, 2}}});
-	//	l1_biases.push_back(1);
-	//}
-	//weights_conv["conv_0"] = l1_filters;
-	//bias_conv["conv_0"] = l1_biases;
-
-	//matrix4d l2_filters;
-	//matrix1d l2_biases;
-	//for(unsigned i=0; i<4; ++i)
-	//{
-	//	//l2_filters.push_back({{{1, 2}, {3, 4}}, {{4, 3}, {2, 1}}, {{1, 4}, {3, 2}}});
-	//	l2_filters.push_back({{{1, 4, 1}, {2, 3, 4}}, {{3, 2, 3}, {4, 1, 2}}});
-	//	l2_biases.push_back(1);
-	//}
-	//weights_conv["conv_1"] = l2_filters;
-	//bias_conv["conv_1"] = l2_biases;
-
-	//matrix2d w_fc1;
-	//double b_fc1 = 1;
-	//for(unsigned i=0; i<16; ++i)
-	//	w_fc1.push_back({1, 2, 3, 4, 1, 2, 3, 4, 1, 2});
-	//weights_fc["fc_0"] = w_fc1;
-	//bias_fc["fc_1"] = b_fc1;
-
-	//matrix2d w_fc2;
-	//double b_fc2 = 1;
-	//for(unsigned i=0; i<10; ++i)
-	//	w_fc2.push_back({1, 2, 3, 4, 1});
-	//weights_fc["fc_1"] = w_fc2;
-	//bias_fc["fc_1"] = b_fc2;
-
-//	std::map<std::string, matrix2d> weights = network->get_weights_fc();
-//	for(auto it=weights.begin(); it!=weights.end(); ++it)
-//	{
-//		matrix2d w = it->second;
-//		for(unsigned i=0; i<w.size(); ++i)
-//			for(unsigned j=0; j<w[i].size(); ++j)
-//				std::cout << w[i][j] << " ";
-//
-//		std::cout << std::endl;
-//	}
-//	std::cout << std::endl;
-
-	
+{
 	AgentConfig agent_conf = {3, 100, 10, 7, 1, 1};
 	NetworkConfig net_conf = {{6, 6, 3}, {3, 4}, {2, 2}, {1, 1}, {TANH, TANH}, {2, 2}, {1, 1}, {10, 5}, 3};
 	OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
@@ -109,7 +55,7 @@ int main()
 	agent.agent_start(screenBuf);		
  		
 	ActionValueNetwork *network = agent.get_network();
-	auto layers = network->get_layers();
+	auto layers = network->getLayers();
 	auto iter = layers.begin();
 	iter++;
 	((Conv3dLayer*)(*iter))->setWeights(conv1Weights);
@@ -171,6 +117,5 @@ int main()
 		for(int i=0; i<activations.size(); ++i)
 			std::cout << activations[i] << " ";
 		std::cout << std::endl;
-	}
-	
+	}	
 }       

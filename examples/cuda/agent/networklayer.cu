@@ -1,4 +1,4 @@
-#include "actionvaluenetwork.h"
+#include "networklayer.h"
 #include <limits>
 #include <thrust/device_vector.h>
 
@@ -179,7 +179,10 @@ struct Conv3dTransform{
 	Conv3dTransform(float *i, float *w, int fdi, int fde, int ih, int iw, int id, int lh, int lw, int ld)
 		:_input(i), _weights(w), _filterDim(fdi), _filterDepth(fde), 
 		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
-		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
+		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld)
+	{
+			
+	}
 	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
 	{
 		// vidx = i*outputWidth*outputDepth + j*outputDepth + k
@@ -188,22 +191,22 @@ struct Conv3dTransform{
 		int j = jk/_layerDepth;
 		int k = jk - (j*_layerDepth);
 
-		//weightsTotalSize = _weightsHeight*_weightsWidth*_weightsDepth + 1;
-		//int eIndex = k*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
 		int widx = k*(_filterDim*_filterDim*_filterDepth + 1);
-		// Input vertex index should be the same as the output one.
-		int iidx = i*_inputWidth*_inputDepth + j*_inputDepth + k;
+		// Input vertex index should be the same as the output one? No, this was a bug. The input vertex index is always in the
+		// first input channel. Thats why there is no + k at the end of right hand side of the expression bellow.
+		int iidx = i*_inputWidth*_inputDepth + j*_inputDepth;
 		float dotProduct = 0.0f;
 		float activation;
 		for(unsigned h=0; h<_filterDim; ++h)
 			for(unsigned w=0; w<_filterDim; ++w)
 				for(unsigned d=0; d<_filterDepth; ++d)
 				{
+					//int wx = k*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
 					int wx = widx + h*_filterDim*_filterDepth + w*_filterDepth + d;
 					int ix = iidx + h*_inputWidth*_inputDepth + w*_inputDepth + d;
 					dotProduct += _input[ix]*_weights[wx];
 				}
-		
+
 		dotProduct += _weights[widx + _filterDim*_filterDim*_filterDepth];
 		activation = (dotProduct > 0)? dotProduct : 0;
 		return thrust::make_tuple(dotProduct, activation);
@@ -314,8 +317,8 @@ void Conv3dLayer::setWeights(const std::vector<float> &w)
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------//
-Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned pde, unsigned ps)
-    :NetworkLayer(ln, at, ls, prevLayer), _poolDim(pdi), _poolDepth(pde), _poolStride(ps)
+Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned ps)
+    :NetworkLayer(ln, at, ls, prevLayer), _poolDim(pdi), _poolStride(ps)
 {
 	std::cout << "Pool3dLayer::Pool3dLayer" << std::endl;
 
@@ -335,15 +338,14 @@ Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 			for(unsigned k=0; k<_layerSize[2]; ++k)
 			{
 				int vIndex = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
-				Tensor3d<UnweightedEdge*> *inputEdges = new Tensor3d<UnweightedEdge*>(_poolDim, _poolDim, _poolDepth);
+				Tensor2d<UnweightedEdge*> *inputEdges = new Tensor2d<UnweightedEdge*>(_poolDim, _poolDim);
 				MaxPool3dUnit *v = new MaxPool3dUnit(&_activations[vIndex], 0, inputEdges);
 				for(unsigned h=0; h<_poolDim; ++h)
 					for(unsigned w=0; w<_poolDim; ++w)
-						for(unsigned d=0; d<_poolDepth; ++d)
-						{
-							UnweightedEdge *e = new UnweightedEdge((*prevVertices)[i+h][j+w][d], v);
-							(*inputEdges)[h][w][d] = e;
-						}				
+					{
+							UnweightedEdge *e = new UnweightedEdge((*prevVertices)[i+h][j+w][k], v);
+							(*inputEdges)[h][w] = e;
+					}				
 
 				(*_vertices)[i][j][k] = v;
 			}
@@ -359,7 +361,6 @@ NetworkLayer::LayerType Pool3dLayer::layerType() const
 struct Pool3dTransform{
 	float *_input;
 	int _poolDim;
-	int _poolDepth;
 	int _inputHeight;
 	int _inputWidth;
 	int _inputDepth;
@@ -367,8 +368,8 @@ struct Pool3dTransform{
 	int _layerWidth;
 	int _layerDepth;
 
-	Pool3dTransform(float *i, int pdi, int pde, int ih, int iw, int id, int lh, int lw, int ld)
-		:_input(i), _poolDim(pdi), _poolDepth(pde), 
+	Pool3dTransform(float *i, int pdi, int ih, int iw, int id, int lh, int lw, int ld)
+		:_input(i), _poolDim(pdi), 
 		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
 		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
 	__host__ __device__  float operator()(size_t vidx)
@@ -379,18 +380,18 @@ struct Pool3dTransform{
 		int j = jk/_layerDepth;
 		int k = jk - (j*_layerDepth);
 
-		// Input vertex index should be the same as the output one.
+		// Input vertex index should be the same as the output one? Yes, because unlike convolution, 
+		// pooling is applied to each channel independently.
 		int iidx = i*_inputWidth*_inputDepth + j*_inputDepth + k;
-		float activation = _input[0];
+		float activation = _input[iidx];
 		for(unsigned h=0; h<_poolDim; ++h)
 			for(unsigned w=0; w<_poolDim; ++w)
-				for(unsigned d=0; d<_poolDepth; ++d)
-				{
-					int ix = iidx + h*_inputWidth*_inputDepth + w*_inputDepth + d;
-					if(_input[ix] > activation)
-						activation = _input[ix];
-				}		
-
+			{	
+				int ix = iidx + h*_inputWidth*_inputDepth + w*_inputDepth;
+				if(_input[ix] > activation)
+					activation = _input[ix];
+			}	
+			
 		return activation;
 	}
 
@@ -410,7 +411,7 @@ void Pool3dLayer::forwardProp()
 	thrust::device_vector<float> activations(layerSize);
 
 	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
-		activations.begin(), Pool3dTransform(thrust::raw_pointer_cast(input.data()), _poolDim, _poolDepth, 
+		activations.begin(), Pool3dTransform(thrust::raw_pointer_cast(input.data()), _poolDim, //_poolDepth, 
 			inputHeight, inputWidth, inputDepth, _layerSize[0], _layerSize[1], _layerSize[2]));
 	cudaDeviceSynchronize();
 
@@ -425,14 +426,6 @@ unsigned Pool3dLayer::poolDim() const
 
 	return _poolDim;
 }
-
-unsigned Pool3dLayer::poolDepth() const
-{	
-	//std::cout << "Pool3dLayer::poolDepth" << std::endl;	
-
-	return _poolDepth;
-}
-
 
 Tensor3d<Pool3dVertex*>* Pool3dLayer::vertices() const
 {
@@ -474,14 +467,12 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
             for(unsigned j=0; j<prevLayerSize[0]; ++j)
 			{
 				int eIndex = i*(prevTotalSize + 1) + j;
-					//	std::cout << eIndex << " = " << _weights.size() << " = " << &_weights[eIndex] << std::endl;
 				Vertex *u = (*prevVertices)[j];
 				WeightedEdge *e = new WeightedEdge(u, v, &_weights[eIndex], &_TDUpdates[eIndex]);
 				(*inputEdges)[j] = e;
 			}
 		
 			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
-					//	std::cout << eIndex << " : " << _weights.size() << " : " << &_weights[eIndex] << std::endl;
 			WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
 			(*inputEdges)[prevTotalSize] = e;
 
@@ -511,13 +502,11 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
             		for(unsigned d=0; d<prevLayerSize[2]; ++d)
                 	{
 						int eIndex = i*(prevTotalSize + 1) + h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d;
-					//	std::cout << eIndex << " - " << _weights.size() << " - " << &_weights[eIndex] << std::endl;
 	           			WeightedEdge *e = new WeightedEdge((*prevVertices)[h][w][d], v, &_weights[eIndex], &_TDUpdates[eIndex]);
 						(*inputEdges)[h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d] = e;
                 	}
 
 			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
-						//std::cout << eIndex << " | " << _weights.size() << " | " << &_weights[eIndex] << std::endl;
 	        WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
 			(*inputEdges)[prevTotalSize] = e;
 		}
@@ -537,26 +526,18 @@ struct Dense1dTransform{
 	float *_input;
 	float *_weights;
 	int _inputHeight;
-	int _inputWidth;
-	int _inputDepth;
 	int _layerHeight;
 	int _layerWidth;
 	int _layerDepth;
 
-	Dense1dTransform(float *i, float *w, int ih, int iw, int id, int lh, int lw, int ld)
+	Dense1dTransform(float *i, float *w, int ih, int lh, int lw, int ld)
 		:_input(i), _weights(w),
-		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
+		_inputHeight(ih), 
 		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
 	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
 	{
-		// vidx = i*outputWidth*outputDepth + j*outputDepth + k
-		//int i = vidx/(_layerWidth*_layerDepth);
-		//int jk = vidx - (i*_layerWidth*_layerDepth);
-		//int j = jk/_layerDepth;
-		//int k = jk - (j*_layerDepth);
-
 		// inputSize = inputHeight*inputWidth*inputDepth + bias
-		int inputTotalSize = _inputHeight*_inputWidth*_inputDepth + 1;
+		int inputTotalSize = _inputHeight + 1;
 		int widx = vidx*inputTotalSize;
 		float dotProduct = 0.0f;
 		float activation;
@@ -575,10 +556,12 @@ void DenseLayer::forwardProp()
 {
 	std::cout << "DenseLayer::forwardProp" << std::endl;
 
-	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
-	int inputHeight = _prevLayer->layerSize()[0];
-	int inputWidth = _prevLayer->layerSize()[1];
-	int inputDepth = _prevLayer->layerSize()[2];
+	int layerSize = _layerSize[0];
+	int prevLayerSize;
+	if(_prevLayer->layerType() == NetworkLayer::FC)
+		prevLayerSize = _prevLayer->layerSize()[0];
+	else
+		prevLayerSize = _prevLayer->layerSize()[0]*_prevLayer->layerSize()[1]*_prevLayer->layerSize()[2];
 
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.end());
@@ -589,7 +572,7 @@ void DenseLayer::forwardProp()
 	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
 		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
 		Dense1dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
-			inputHeight, inputWidth, inputDepth, _layerSize[0], _layerSize[1], _layerSize[2]));
+			prevLayerSize, _layerSize[0], _layerSize[1], _layerSize[2]));
 	cudaDeviceSynchronize();
 
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
@@ -633,226 +616,3 @@ void DenseLayer::setWeights(const std::vector<float> &w)
 	std::copy(w.begin(), w.end(), std::back_inserter(_weights));
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------------------------------//
-
-ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
-	:_stateDim(conf.state_dim), _numActions(conf.num_actions)
-{
-	std::cout << "ActionValueNetwork::ActionValueNetwork" << std::endl;
-
-	NetworkLayer *prevLayer = nullptr;
-	std::vector<unsigned> prevLayerSize = {_stateDim[0], _stateDim[1], _stateDim[2]};
-	NetworkLayer *layer = new InputLayer("input", RELU, prevLayerSize, prevLayer);
-	_layers.push_back(layer);
-	_layerSizes["input"] = prevLayerSize;
-
-	prevLayer = layer;
-	for(unsigned i=0; i<conf.num_filters.size(); ++i)
-	{
-		std::string layerName = "conv_" + std::to_string(i);
-		unsigned numFilter = conf.num_filters[i];
-		unsigned filterDim = conf.filter_dim[i];
-		unsigned filterStride = conf.filter_strides[i];
-		ActivationType activation = conf.activations[i];
-
-		// Add padding later.
-		unsigned layerHeight = (prevLayerSize[0] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
-		unsigned layerWidth = (prevLayerSize[1] - conf.filter_dim[i])/conf.filter_strides[i] + 1;
-		unsigned layerDepth = conf.num_filters[i];
-
-		layer = new Conv3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, filterDim, prevLayerSize[2], filterStride);
-		_layers.push_back(layer);
-
-		prevLayer = layer;
-		prevLayerSize = {layerHeight, layerWidth, layerDepth};
-		_layerSizes[layerName] = prevLayerSize;
-		
-		if(conf.pool_dim[i] > 0)
-		{
-		   	layerName = "max_pool_" + std::to_string(i);
-			unsigned poolDim = conf.pool_dim[i];
-			unsigned poolStride = conf.pool_strides[i];
-
-			layerHeight = (prevLayerSize[0] - poolDim)/poolStride + 1;
-			layerWidth = (prevLayerSize[1] - poolDim)/poolStride + 1;
-			layerDepth = prevLayerSize[2];
-			
-			layer = new Pool3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, poolDim, prevLayerSize[2], poolStride);
-			_layers.push_back(layer);
-		
-			prevLayer = layer;
-			prevLayerSize = {layerHeight, layerWidth, layerDepth};
-			_layerSizes[layerName] = prevLayerSize;
-		}
-	}
-
-	int prevFcSize = prevLayerSize[0]*prevLayerSize[1]*prevLayerSize[2];
-	unsigned i;
-	for(i=0; i<conf.num_hidden_units.size(); ++i)
-	{
-		std::string layerName = "fc_" + std::to_string(i);
-		unsigned numHiddenUnits = conf.num_hidden_units[i];
-
-		layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
-		_layers.push_back(layer);
-		_layerSizes[layerName] = {conf.num_hidden_units[i]};
-  	
-		prevLayer = layer;
-		prevFcSize = conf.num_hidden_units[i];
-	}
-	
-	// Output layer	
-	std::string layerName = "fc_" + std::to_string(i);
-	unsigned outputSize = 1 << conf.num_actions;
-	unsigned numHiddenUnits = outputSize;
-
-	layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
-	_layers.push_back(layer);
-	_layerSizes[layerName] = {outputSize};
-	
-//	this->init_kaiming();
-
-	std::string prevLayerName;
-	for(auto it=this->_layers.begin(); it!=_layers.end(); it++)
-	{
-		std::string layerName = (*it)->layerName();
-		std::cerr << layerName << " [ ";
-		for(unsigned i=0; i<_layerSizes[layerName].size(); ++i)
-			std::cerr << _layerSizes[layerName][i] << " ";
-		std::cerr << "] [ ";
-		if((*it)->layerType() == NetworkLayer::CONV)
-			std::cerr << ((Conv3dLayer*)*it)->filterDim() << ", " << ((Conv3dLayer*)*it)->filterDim() << ", " << ((Conv3dLayer*)*it)->filterDepth();
-		else if((*it)->layerType() == NetworkLayer::MAX_POOL)
-			std::cerr << ((Pool3dLayer*)*it)->poolDim() << ", " << ((Pool3dLayer*)*it)->poolDim() << ", " << ((Pool3dLayer*)*it)->poolDepth();
-		else if((*it)->layerType() == NetworkLayer::FC)
-		{
-			std::vector<unsigned> prevLayerSize = _layerSizes[prevLayerName];
-			int s = 0;
-			for(unsigned i=0; i<prevLayerSize.size(); ++i)
-				s += prevLayerSize[i];
-			std::cerr << ((DenseLayer*)*it)->numHiddenUnits()*s;
-		}
-		std::cerr << " ]" << std::endl;
-
-		prevLayerName = layerName;
-	}
-}
-
-void ActionValueNetwork::init_input(vizdoom::BufferPtr s)
-{
-	std::cout << "ActionValueNetwork::init_input" << std::endl;
-	
-	InputLayer *inputLayer = (InputLayer*)*_layers.begin();
-	inputLayer->setState(s);
-}
-
-// state -> conv3d -> max_pool -> conv3d -> max_pool -> fully_connected -> fully_connected -> softmax
-std::vector<float> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
-{
-	std::cout << "ActionValueNetwork::get_action_values" << std::endl;
-	
-	// Init first layer.
-	init_input(s);
-	auto it =_layers.begin();
-	for(; it!=_layers.end(); it++)
-		// activation(prev_layer*W + b)
-		(*it)->forwardProp();
-
-	std::vector<float> actionValues = _layers.back()->activations();
-	return std::vector<float>(actionValues.begin(), actionValues.end()-1);
-}
-
-
-/*void ActionValueNetwork::init_saxe(unsigned num_rows, unsigned num_cols)
-{
-	std::cout << "ActionValueNetwork::init_saxe" << std::endl;
-}*/
-
-// Kaiming He initialization. Appropriate for ReLU and leaky ReLU activations.
-/*void ActionValueNetwork::init_kaiming()
-{
-	std::cout << "ActionValueNetwork::init_kaiming" << std::endl;
-
-	// Try using member random generator.
-	std::default_random_engine g;
-
-	for(auto it=weights_conv.begin(); it!=weights_conv.end(); it++)
-	{
-		int n = this->filter_dim[it->first]*this->filter_dim[it->first]*this->num_filters[it->first];
-		std::normal_distribution<double> normal(0, std::sqrt(2.0/n));
-		for(unsigned i=0; i<it->second.size(); ++i)
-			for(unsigned j=0; j<it->second[i].size(); ++j)
-				for(unsigned k=0; k<it->second[i][j].size(); ++k)
-					for(unsigned l=0; l<it->second[i][j][k].size(); ++l)
-						it->second[i][j][k][l] = normal(g);
-	}
-
-	// Check whether n should be the size of input or output of coresponding layer. 
-	// It should be input (fan-in) so check which one of it->second.size or it->second[i].size should be used as n.
-	for(auto it=weights_fc.begin(); it!=weights_fc.end(); it++)
-	{
-		int n = it->second.size();
-		std::normal_distribution<double> normal(0, std::sqrt(2.0/n));
-		for(unsigned i=0; i<it->second.size(); ++i)
-			for(unsigned j=0; j<it->second[i].size(); ++j)
-				it->second[i][j] = normal(g);
-	}
-
-	//Bias should already be initialized to 0.
-}*/
-
-/*std::vector<std::vector<double>> ActionValueNetwork::get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat)
-{
-	std::cout << "ActionValueNetwork::get_td_update" << std::endl;
-
-	// Continue here tomorrow.
-}*/
-
-std::list<NetworkLayer*> ActionValueNetwork::get_layers() const
-{
-	std::cout << "ActionValueNetwork::get_layers" << std::endl;
-
-	return _layers;
-}
-
-/*std::map<std::string, matrix4d> ActionValueNetwork::get_weights_conv() const
-{
-	std::cout << "ActionValueNetwork::get_weights" << std::endl;
-
-	return weights_conv;		
-}
-
-
-std::map<std::string, matrix1d> ActionValueNetwork::get_bias_conv() const
-{
-	std::cout << "ActionValueNetwork::get_weights" << std::endl;
-
-	return bias_conv;		
-}
-
-std::map<std::string, matrix2d> ActionValueNetwork::get_weights_fc() const
-{
-	std::cout << "ActionValueNetwork::get_weights" << std::endl;
-
-	return weights_fc;		
-}
-
-
-std::map<std::string, double> ActionValueNetwork::get_bias_fc() const
-{
-	std::cout << "ActionValueNetwork::get_weights" << std::endl;
-
-	return bias_fc;		
-}
-
-
-void ActionValueNetwork::set_weights(const std::map<std::string, matrix4d> &w_conv, const std::map<std::string, matrix1d> &b_conv, 
-		const std::map<std::string, matrix2d> &w_fc, const std::map<std::string, double> &b_fc)
-{
-	std::cout << "ActionValueNetwork::set_weights" << std::endl;
-
-	this->weights_conv = w_conv;
-	this->bias_conv = b_conv;
-	this->weights_fc = w_fc;
-	this->bias_fc = b_fc;
-}*/

@@ -72,10 +72,52 @@ struct Tensor3d {
 template <typename T>
 struct Tensor2d {
 	std::vector<std::vector<T>> elements;
+	
 	Tensor2d<T>(){}
     Tensor2d<T>(unsigned h, unsigned w)
 	{
 		elements = std::vector<std::vector<T>>(h, std::vector<T>(w, 0));
+	}
+	//Tensor3d(unsigned h, unsigned w, unsigned d)
+	//{
+	//	elements = std::vector<std::vector<std::vector<T>>>(h, std::vector<std::vector<T>>(w, std::vector<T>(d, 0)));
+	//}
+	
+	Tensor2d(const std::vector<std::vector<T>> &e)
+	{
+		elements = e;
+	}
+
+	// Test this constructor.
+	template <typename U>
+	Tensor2d(Tensor2d<U> *t)
+	{
+		for(unsigned i=0; i<t->elements.size(); ++i)
+	    {
+	      //std::vector<Vertex*> v1(t->elements[i].begin(), t->elements[i].end());
+	      //v1.push_back(std::vector<Vertex*>(t->elements[i][j].begin(), t->elements[i][j].end()));
+
+	      elements.push_back(std::vector<Vertex*>(t->elements[i].begin(), t->elements[i].end()));
+	    }
+
+	    //for(unsigned i=0; i<V->size(); ++i)
+	        //for(unsigned j=0; j<(*V)[i].size(); ++j)
+	            //for(unsigned k=0; k<(*V)[i][j].size(); ++k)
+	                //if((*V)[i][j][k] == nullptr || (*V)[i][j][k] != (*C)[i][j][k])
+	                    //std::cout << "FALSE" << std::endl;
+	                //else
+	                    //std::cout << "TRUE" << std::endl;	
+	}
+
+	// Test this also. (Tested this struct otside of project and it looked fine.)
+	std::vector<T>& operator[](const int i)
+	{
+		return elements[i];
+	}
+
+	int size() const
+	{
+		return elements.size();
 	}
 };
 

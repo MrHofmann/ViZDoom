@@ -40,7 +40,6 @@ Edge::EdgeType UnweightedEdge::edgeType() const
 	return Edge::UNWEIGHTED;
 }
 
-//Vertex::Vertex(double a, Edge *o)
 Vertex::Vertex(float *a, float ing)
 	:_activation(a), _inputGrad(ing)
 {
@@ -75,24 +74,6 @@ Vertex::VertexType BiasVertex::vertexType() const
 	return Vertex::BIAS;
 }
 
-/*
-BiasVertex::BiasVertex()
-{
-	//std::cout << "BiasVertex::BiasVertex" << std::endl;
-	
-	float *a = new float(1.0f);
-	_activation = a;
-	_inputGrad = 0;
-}
-*/
-
-/*
-BiasVertex::~BiasVertex()
-{
-	//std::cout << "BiasVertex::~BiasVertex" << std::endl;
-}
-*/
-
 //----------
 // INPUT VERTEX
 
@@ -114,15 +95,6 @@ Tensor1d<WeightedEdge*> *Conv3dVertex::inputEdges() const
 	return _inputEdges;
 }
 
-/*
-double Conv3dVertex::bias() const
-{
-	//std::cout << "Conv3dVertex::bias" << std::endl;
-
-	return _bias;
-}
-*/
-
 void Conv3dVertex::setDotProduct(float dp)
 {
 	//std::cout << "Conv3dVertex::setInnerProduct" << std::endl;
@@ -137,13 +109,13 @@ Vertex::VertexType Relu3dUnit::vertexType() const
 	return Vertex::A_RELU;
 }
 
-Pool3dVertex::Pool3dVertex(float *a, float ing, Tensor3d<UnweightedEdge*> *ie)
+Pool3dVertex::Pool3dVertex(float *a, float ing, Tensor2d<UnweightedEdge*> *ie)
 	:Vertex(a, ing), _inputEdges(ie)
 {
 	//std::cout << "Pool3dVertex::Pool3dVertex" << std::endl;
 }
 
-Tensor3d<UnweightedEdge*> *Pool3dVertex::inputEdges() const
+Tensor2d<UnweightedEdge*> *Pool3dVertex::inputEdges() const
 {
 	//std::cout << "Pool3dVertex::inputEdges" << std::endl;
 
@@ -176,15 +148,6 @@ void Dense1dVertex::setDotProduct(float dp)
 	
 	*_dotProduct = dp;
 }
-
-/*
-double Dense1dVertex::bias() const
-{
-	//std::cout << "Dense1dVertex::bias" << std::endl;
-
-	return _bias;
-}
-*/
 
 Vertex::VertexType Relu1dUnit::vertexType() const
 {
