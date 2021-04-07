@@ -126,7 +126,7 @@ void ActionValueNetwork::fc_prop(vizdoom::BufferPtr input, std::string layer_nam
 		(*result)[j] = this->bias_fc[layer_name];
 		this->weights_fc[layer_name][0][j];
 		for(unsigned i=0; i<(*input).size(); ++i)
-			(*result)[j] += (*input)[i]*this->weights_fc[layer_name][i][j];		
+			(*result)[j] += (*input)[i]*this->weights_fc[layer_name][i][j];
 	}
 }
 
@@ -209,7 +209,7 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
   weights_fc[layer_name] = weights;
   bias_fc[layer_name] = 0;
 
-	this->init_kaiming();
+	//this->init_kaiming();
 
 	for(auto it=this->layers.begin(); it!=layers.end(); it++)
 	{
@@ -261,6 +261,7 @@ std::vector<double> ActionValueNetwork::get_action_values(vizdoom::BufferPtr s)
 		prev_layer_size = this->layer_sizes[layer_name];
 	}
 
+	std::cout << "get action out" << std::endl;
 	// return layers.back().second; // (BufferPtr)
 	return std::vector<double>((*prev_layer).begin(), (*prev_layer).end());
 }

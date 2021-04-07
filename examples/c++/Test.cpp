@@ -28,7 +28,6 @@ int main()
 		matrix1d l1_biases;
 		for(unsigned i=0; i<3; ++i)
 		{
-			//l1_filters.push_back({{{1, 2}, {3, 4}}, {{4, 3}, {2, 1}}, {{1, 4}, {3, 2}}});
 			l1_filters.push_back({{{1, 4, 1}, {2, 3, 4}}, {{3, 2, 3}, {4, 1, 2}}});
 			l1_biases.push_back(1);
 		}
@@ -39,38 +38,40 @@ int main()
 		matrix1d l2_biases;
 		for(unsigned i=0; i<4; ++i)
 		{
-			//l2_filters.push_back({{{1, 2}, {3, 4}}, {{4, 3}, {2, 1}}, {{1, 4}, {3, 2}}});
 			l2_filters.push_back({{{1, 4, 1}, {2, 3, 4}}, {{3, 2, 3}, {4, 1, 2}}});
 			l2_biases.push_back(1);
 		}
 		weights_conv["conv_1"] = l2_filters;
 		bias_conv["conv_1"] = l2_biases;
 
+		matrix2d w_fc0;
+		double b_fc0 = 1;
+		for(unsigned i=0; i<16; ++i)
+			w_fc0.push_back({1, 2, 3, 4, 1, 2, 3, 4, 1, 2});
+		weights_fc["fc_0"] = w_fc0;
+		bias_fc["fc_0"] = b_fc0;
+
 		matrix2d w_fc1;
 		double b_fc1 = 1;
-		for(unsigned i=0; i<16; ++i)
-			w_fc1.push_back({1, 2, 3, 4, 1, 2, 3, 4, 1, 2});
-		weights_fc["fc_0"] = w_fc1;
+		for(unsigned i=0; i<10; ++i)
+			w_fc1.push_back({1, 2, 3, 4, 1});
+		weights_fc["fc_1"] = w_fc1;
 		bias_fc["fc_1"] = b_fc1;
 
 		matrix2d w_fc2;
 		double b_fc2 = 1;
-		for(unsigned i=0; i<10; ++i)
-			w_fc2.push_back({1, 2, 3, 4, 1});
-		weights_fc["fc_1"] = w_fc2;
-		bias_fc["fc_1"] = b_fc2;
-
+		for(unsigned i=0; i<5; ++i)
+			w_fc2.push_back({1, 2, 3, 4, 1, 2, 3, 4});
+		weights_fc["fc_2"] = w_fc2;
+		bias_fc["fc_2"] = b_fc2;
 
 		DoomAgent agent(agent_conf, net_conf, opt_conf);				
 		agent.agent_start(screenBuf);		
  		
 		ActionValueNetwork *network = agent.get_network();
-		//network->set_weights(weights_conv, bias_conv, weights_fc, bias_fc);
-		
+		network->set_weights(weights_conv, bias_conv, weights_fc, bias_fc);
+	
 		std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
-
-		//ActionValueNetwork *network = agent.get_network();
-		//network->set_weights(weights_conv, bias_conv, weights_fc, bias_fc);
 
 		std::map<std::string, matrix2d> weights = network->get_weights_fc();
 		for(auto it=weights.begin(); it!=weights.end(); ++it)
