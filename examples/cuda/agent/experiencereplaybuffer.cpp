@@ -1,20 +1,24 @@
 #include "experiencereplaybuffer.h"
 #include <experimental/algorithm>
 
-ExperienceReplayBuffer::ExperienceReplayBuffer(unsigned size, unsigned minibatch_size, int seed)
-	:minibatch_size(minibatch_size), max_size(size), rand_generator(std::mt19937(seed))
+ExperienceReplayBuffer::ExperienceReplayBuffer(unsigned size, unsigned minibatchSize, int seed)
+	:_minibatchSize(minibatchSize), _maxSize(size), _randGenerator(std::mt19937(seed))
 {
+	//std::cout << "ExperienceReplayBuffer::ExperienceReplayBuffer" << std::endl;
+
 	//self.buffer = []
 	//self.rand_generator = np.random.RandomState(seed)
-	//this->rand_generator = std::mt19937{std::random_device{}()};
+	//_randGenerator = std::mt19937{std::random_device{}()};
 }
 
-void ExperienceReplayBuffer::append(vizdoom::BufferPtr s, std::vector<double> a, double r, bool t, vizdoom::BufferPtr s_p)
+void ExperienceReplayBuffer::append(vizdoom::BufferPtr s, std::vector<double> a, double r, bool t, vizdoom::BufferPtr sp)
 {
-	if(this->buffer.size() == this->max_size)
-		this->buffer.pop_front();
+	//std::cout << "ExperienceReplayBuffer::append" << std::endl;
 
-	this->buffer.push_back({s, a, r, t, s_p});
+	if(_buffer.size() == _maxSize)
+		_buffer.pop_front();
+
+	_buffer.push_back({s, a, r, t, sp});
 }
 
 std::vector<ExperienceSample> ExperienceReplayBuffer::sample() const
@@ -24,18 +28,18 @@ std::vector<ExperienceSample> ExperienceReplayBuffer::sample() const
 
 	// Try to seed member random generator in constructor, and feed it to sample function.
 	std::mt19937 r = std::mt19937{std::random_device{}()};
-	std::vector<ExperienceSample> random_choice;
-	std::experimental::sample(buffer.begin(), buffer.end(), std::back_inserter(random_choice), this->minibatch_size, r);
-	return random_choice;
+	std::vector<ExperienceSample> randomChoice;
+	std::experimental::sample(_buffer.begin(), _buffer.end(), std::back_inserter(randomChoice), _minibatchSize, r);
+	return randomChoice;
 }
 
-unsigned ExperienceReplayBuffer::get_buffer_size() const
+unsigned ExperienceReplayBuffer::getBufferSize() const
 {
-	return this->buffer.size();
+	return _buffer.size();
 }
 
-unsigned ExperienceReplayBuffer::get_minibatch_size() const
+unsigned ExperienceReplayBuffer::getMinibatchSize() const
 {
-	return this->minibatch_size;
+	return _minibatchSize;
 }
 

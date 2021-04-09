@@ -16,12 +16,14 @@ protected:
 		
 public:
 	enum LayerType {INPUT, CONV, MAX_POOL, FC};
+	enum PropagationType {PREDICTION, TARGET};
 
 	NetworkLayer(){}
 	NetworkLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
 	virtual ~NetworkLayer(){std::cout << "Delete NetworkLayer: " << this->layerName() << std::endl;}
 	virtual LayerType layerType() const = 0;
-	virtual void forwardProp() = 0;
+	virtual void forwardProp(PropagationType p) = 0;
+	//virtual void forwardPropTarget() = 0;
 	std::string layerName() const;
 	ActivationType activationType() const;
 	std::vector<unsigned> layerSize() const;
@@ -38,7 +40,8 @@ public:
 	InputLayer(){}
 	InputLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
 	virtual LayerType layerType() const;
-	virtual void forwardProp();
+	virtual void forwardProp(PropagationType p);
+	//virtual void forwardPropTarget();
 
 	Tensor3d<Input3dVertex*>* vertices() const;
 	void setState(vizdoom::BufferPtr s);
@@ -51,6 +54,7 @@ private:
 	unsigned _filterStride;
 
 	std::vector<float> _weights;
+	std::vector<float> _cachedWeights;
 	std::vector<float> _dotProducts;
 	std::vector<float> _TDUpdates;
 	Tensor3d<Conv3dVertex*> *_vertices;
@@ -59,7 +63,9 @@ public:
 	Conv3dLayer(){}
 	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fdi, unsigned fde, unsigned fs);
 	virtual LayerType layerType() const;
-	virtual void forwardProp();
+	virtual void forwardProp(PropagationType p);
+	//virtual void forwardPropTarget();
+	void cacheWeights();
 	//thrust::device_ptr<float> weightsToDevice() const;
 	//thrust::device_ptr<float> activationsToDevice() const;
 
@@ -83,7 +89,8 @@ public:
 	Pool3dLayer(){}
 	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned fs);
 	virtual LayerType layerType() const;
-	virtual void forwardProp();
+	virtual void forwardProp(PropagationType p);
+	//virtual void forwardPropTarget();
 
 	unsigned poolDim() const;
 	Tensor3d<Pool3dVertex*> *vertices() const;
@@ -94,6 +101,7 @@ private:
 	unsigned _numHiddenUnits;
 
 	std::vector<float> _weights;
+	std::vector<float> _cachedWeights;
 	std::vector<float> _dotProducts;
 	std::vector<float> _TDUpdates;
 	Tensor1d<Dense1dVertex*> *_vertices;
@@ -102,7 +110,9 @@ public:
 	DenseLayer(){}
 	DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
-	virtual void forwardProp();
+	virtual void forwardProp(PropagationType p);
+	//virtual void forwardPropTarget();
+	void cacheWeights();
 
 	unsigned numHiddenUnits() const;
 	std::vector<float> weights() const;

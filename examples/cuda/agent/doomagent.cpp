@@ -3,31 +3,64 @@
 #include <limits>
 
 
-DoomAgent::DoomAgent(const AgentConfig &agent_conf, const NetworkConfig &net_conf, const OptimizerConfig &opt_conf)
-	:num_actions(agent_conf.num_actions), num_replay(agent_conf.num_replay), discount(agent_conf.discount), tau(agent_conf.tau)
+DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf, const OptimizerConfig &optConf)
+	:_numActions(agentConf.numActions), _numReplay(agentConf.numReplay), _discount(agentConf.discount), _tau(agentConf.tau)
 {
-	//INIT
-	std::cout << "DoomAgent::agent_init" << std::endl;
+	std::cout << "DoomAgent::DoomAgent" << std::endl;
 
-	this->replay_buffer = ExperienceReplayBuffer(num_replay, agent_conf.num_minibatch, agent_conf.seed);
-	this->network = ActionValueNetwork(net_conf);
-	this->optimizer = AdamOptimizer(net_conf, opt_conf);
+	_replayBuffer = ExperienceReplayBuffer(_numReplay, agentConf.numMinibatch, agentConf.seed);
+	_network = ActionValueNetwork(netConf);
+	_optimizer = AdamOptimizer(netConf, optConf);
 	
 	//self.rand_generator = np.random.RandomState(agent_config.get("seed"))
-	//self.last_state = None
-	//self.last_action = None
 	
-	this->sum_rewards = 0;
-	this->episode_steps = 0;
+	_lastState = nullptr;
+	//self.last_action = None	
+	_sumRewards = 0;
+	_episodeSteps = 0;
 }
 
-void DoomAgent::optimize_network(const std::vector<ExperienceSample> &exp, ActionValueNetwork q)
+void DoomAgent::optimizeNetwork(const std::vector<ExperienceSample> &exp, ActionValueNetwork q)
 {
+	std::cout << "DoomAgent::optimizeNetwork" << std::endl;
 
 }
 
-std::vector<double> DoomAgent::random_action_with_prob(const std::vector<double> &probs) const
+std::vector<double> DoomAgent::softmax(const std::vector<float> &actionValues) const
 {
+	std::cout << "DoomAgent::softmax" << std::endl;
+
+	// Compute the preferences by dividing the action-values by the temperature parameter tau
+	std::vector<double> preferences;
+	for(unsigned i=0; i<actionValues.size(); ++i)
+		preferences.push_back(actionValues[i]/_tau);
+
+	// Compute the maximum preference across the actions
+	double maxPreference = std::numeric_limits<double>::min();
+	for(unsigned i=0; i>preferences.size(); ++i)
+		if(preferences[i] > maxPreference)
+			maxPreference = preferences[i];
+
+	// Compute the numerator, i.e., the exponential of the preference - the max preference.
+	std::vector<double> expPreferences;
+	for(unsigned i=0; i<preferences.size(); ++i)
+		expPreferences.push_back(std::exp(preferences[i] - maxPreference));
+	
+	// Compute the denominator, i.e., the sum over the numerator along the actions axis.
+	double sumOfExpPreferences = std::accumulate(expPreferences.begin(), expPreferences.end(), 0);
+	
+	// Compute the action probabilities according to the equation in the previous cell.
+	std::vector<double> actionProbs;
+	for(unsigned i=0; i<expPreferences.size(); ++i)
+		actionProbs.push_back(expPreferences[i]/sumOfExpPreferences);
+
+	return actionProbs;
+}
+
+std::vector<double> DoomAgent::randomActionWithProb(const std::vector<double> &probs) const
+{
+	//std::cout << "DoomAgent::randomActionWithProb" << std::endl;
+
 	double val = (double)std::rand() / RAND_MAX;
 
 	double p = 0;
@@ -40,7 +73,7 @@ std::vector<double> DoomAgent::random_action_with_prob(const std::vector<double>
 			break;
 	}
 
-	std::vector<double> action(this->num_actions, 0);
+	std::vector<double> action(_numActions, 0);
 	for(unsigned j=0; j<action.size(); ++j)
 		action[action.size()-1-j] = (i >> j) & 1;
 
@@ -50,82 +83,84 @@ std::vector<double> DoomAgent::random_action_with_prob(const std::vector<double>
 // This is a softmax policy
 std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
-	std::vector<float> action_values = this->network.getActionValues(state);
-	//std::vector<double> action_values = std::vector<double>(8, 0.0);
-	
-	// Compute the preferences by dividing the action-values by the temperature parameter tau
-	std::vector<double> preferences;
-	for(unsigned i=0; i<action_values.size(); ++i)
-		preferences.push_back(action_values[i]/this->tau);
+	//std::cout << "DoomAgent::policy" << std::endl;
 
-	// Compute the maximum preference across the actions
-	double max_preference = std::numeric_limits<double>::min();
-	for(unsigned i=0; i>preferences.size(); ++i)
-		if(preferences[i] > max_preference)
-			max_preference = preferences[i];
+	std::vector<float> actionValues = _network.getActionValuePreds(state);	
+	std::vector<double> actionProbs	= softmax(actionValues);
 
-	// Compute the numerator, i.e., the exponential of the preference - the max preference.
-	std::vector<double> exp_preferences;
-	for(unsigned i=0; i<preferences.size(); ++i)
-		exp_preferences.push_back(std::exp(preferences[i] - max_preference));
-	
-	// Compute the denominator, i.e., the sum over the numerator along the actions axis.
-	double sum_of_exp_preferences = std::accumulate(exp_preferences.begin(), exp_preferences.end(), 0);
-	
-	// Compute the action probabilities according to the equation in the previous cell.
-	std::vector<double> action_probs;
-	for(unsigned i=0; i<exp_preferences.size(); ++i)
-		action_probs.push_back(exp_preferences[i]/sum_of_exp_preferences);
-	
-	return random_action_with_prob(action_probs);
+	return randomActionWithProb(actionProbs);
 }
 
-std::vector<double> DoomAgent::agent_start(vizdoom::BufferPtr state)
+std::vector<double> DoomAgent::agentStart(vizdoom::BufferPtr state)
 {
-	std::cout << "DoomAgent::agent_start" << std::endl;
+	std::cout << "DoomAgent::agentStart" << std::endl;
 
-	this->sum_rewards = 0;
-	this->episode_steps = 0;
+	_sumRewards = 0;
+	_episodeSteps = 0;
 	
-	std::mt19937 e(std::random_device{}()); 
-	std::bernoulli_distribution d;
+	//std::mt19937 e(std::random_device{}()); 
+	//std::bernoulli_distribution d;
+	//std::vector<double> lastAction;
+	//for(unsigned i=0; i<_numActions; ++i)
+	//	lastAction.push_back(d(e));
 
-	std::vector<double> last_action;
-	for(unsigned i=0; i<this->num_actions; ++i)
-		last_action.push_back(d(e));
+	_lastState = state;
+	_lastAction = policy(_lastState); 
 
-	//std::vector<double> action = this->policy(state); 
-	return last_action;
+	return _lastAction;
 }
 
-std::vector<double> DoomAgent::agent_step(double reward, vizdoom::BufferPtr state)
+std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state)
 {
-	std::cout << "DoomAgent::agent_step" << std::endl;
+	std::cout << "DoomAgent::agentStep" << std::endl;
 	
-	this->sum_rewards += reward;
-	this->episode_steps += 1;
+	_sumRewards += reward;
+	_episodeSteps += 1;
 	
-	std::vector<double> action = this->policy(state);
+	std::vector<double> action = policy(state);
 	//std::cout << "{ ";
 	//for(unsigned i=0; i<action.size(); ++i)
 	//	std::cout << action[i] << " ";
-	//std::cout << "}" << std::endl;	
+	//std::cout << "}" << std::endil;	
 
-	this->replay_buffer.append(this->last_state, this->last_action, reward, false, state);
-	if(this->replay_buffer.get_buffer_size() > this->replay_buffer.get_minibatch_size())
+	// This block is for training.
+	_replayBuffer.append(_lastState, _lastAction, reward, false, state);
+	if(_replayBuffer.getBufferSize() > _replayBuffer.getMinibatchSize())
 	{
-		ActionValueNetwork current_q = this->network;
-		for(unsigned i=0; i<this->num_replay; ++i)
+		_network.cacheWeights();
+		for(unsigned i=0; i<_numReplay; ++i)
 		{
-			std::vector<ExperienceSample> experiences = this->replay_buffer.sample();
+			std::vector<ExperienceSample> experiences = _replayBuffer.sample();
 			
-			//This causes slowdown
-			//optimize_network(experiences, current_q);
+			//optimizeNetwork(experiences, currentQ);
+			////std::vector<std::vector<float>> qNextMat;
+			////std::vector<std::vector<float>> qMat;
+			std::vector<double> deltaVec;
+			// First experience sample causes crash so it is skipped.
+			for(unsigned j=1; j<experiences.size(); ++j)
+			{
+				//std::vector<float> qNextVec = currentQ.getActionValues(experiences[j].nextState);
+				std::vector<float> qNextVec = _network.getActionValueTargets(experiences[j].nextState);
+				////qNextMat.push_back(qNextVec);
+				std::vector<double> probsNextVec = softmax(qNextVec);
+				double vNext = 0;
+				for(unsigned k=0; k<qNextVec.size(); ++k)
+					vNext += probsNextVec[k]*qNextVec[k];
+				double target = experiences[j].reward + _discount*vNext;
+				
+				std::vector<float> qVec = _network.getActionValuePreds(experiences[j].state);
+				////qMat.push_back(qVec);
+				std::vector<double> eAction = experiences[j].action;
+				unsigned a = 0;
+				for(unsigned k=0; k<eAction.size(); ++k)
+					a += (1 << k)*eAction[eAction.size()-1 - k];
+				deltaVec.push_back(target - qVec[a]);
+			}
 		}
 	}
 
-	this->last_state = state;
-	this->last_action = action;
+	_lastState = state;
+	_lastAction = action;
 
 	return action;
 
@@ -139,44 +174,45 @@ std::vector<double> DoomAgent::agent_step(double reward, vizdoom::BufferPtr stat
 	//return action_random;
 }
 
-void DoomAgent::agent_end(double reward)
+void DoomAgent::agentEnd(double reward)
 {
-	std::cout << "DoomAgent::agent_end" << std::endl;
+	std::cout << "DoomAgent::agentEnd" << std::endl;
 		
-	this->sum_rewards += reward;
-	this->episode_steps += 1;
+	_sumRewards += reward;
+	_episodeSteps += 1;
 
 	//std::vector<double> action = this->policy(state); // No need for this sice state is terminal	
-	vizdoom::BufferPtr state(new std::vector<uint8_t>(this->last_state.get()->size(), 0));
+	vizdoom::BufferPtr state(new std::vector<uint8_t>(_lastState.get()->size(), 0));
 	//std::shared_ptr<std::vector<uint8_t>>();
-	this->replay_buffer.append(this->last_state, this->last_action, reward, false, state);
+	_replayBuffer.append(_lastState, _lastAction, reward, false, state);
 
-	if(this->replay_buffer.get_buffer_size() > this->replay_buffer.get_minibatch_size())
+	if(_replayBuffer.getBufferSize() > _replayBuffer.getMinibatchSize())
 	{
-		ActionValueNetwork current_q = this->network;
-		for(unsigned i=0; i<this->num_replay; ++i)
+		//ActionValueNetwork currentQ = _network;
+		for(unsigned i=0; i<_numReplay; ++i)
 		{
-			std::vector<ExperienceSample> experiences = this->replay_buffer.sample();
-			optimize_network(experiences, current_q);
+			std::vector<ExperienceSample> experiences = _replayBuffer.sample();
+			//optimizeNetwork(experiences, currentQ);
 		}
 	}
 
-	//this->last_state = state;
-	//this->last_action = action;
+	//_lastState = state;
+	//_lastAction = action;
 
 	//return action
 }
 
-double DoomAgent::agent_message(std::string message) const
+/*
+double DoomAgent::agentMessage(std::string message) const
 {
-	std::cout << "DoomAgent::agent_message" << std::endl;
+	std::cout << "DoomAgent::agentMessage" << std::endl;
 	if(message == "get_sum_reward")
-		return this->sum_rewards;
+		return _sumRewards;
 	else
-		;//raise Exception("Unrecognized Message!")
-}
+		return 0;//raise Exception("Unrecognized Message!")
+}*/
 
-ActionValueNetwork *DoomAgent::get_network()
+ActionValueNetwork *DoomAgent::getNetwork()
 {
-	return &(this->network);
+	return &_network;
 }

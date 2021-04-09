@@ -6,6 +6,11 @@ NetworkLayer::NetworkLayer(std::string n, ActivationType a, const std::vector<un
 	:_layerName(n), _activationType(a), _layerSize(s), _prevLayer(pl)
 {
 	std::cout << "NetworkLayer::NetworkLayer" << std::endl;
+	
+	int lts = 0;
+	for(unsigned i=0; i<s.size(); ++i)
+		lts += s[i];
+	_activations = std::vector<float>(lts, 333);
 }
 
 std::string NetworkLayer::layerName() const
@@ -44,7 +49,7 @@ std::vector<float> NetworkLayer::activations() const
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
 InputLayer::InputLayer(std::string ln, ActivationType at, const std::vector<unsigned> &ls, NetworkLayer *pl)
-	:NetworkLayer(ln, at, ls, pl)
+	:NetworkLayer(ln, at, ls, pl)//, _activations(std::vector<float>(ls[0]*ls[1]*ls[2] + 1))
 {
 	std::cout << "InputLayer::InputLayer" << std::endl;
 
@@ -68,9 +73,37 @@ NetworkLayer::LayerType InputLayer::layerType() const
 	return NetworkLayer::INPUT;
 }
 
-void InputLayer::forwardProp()
+void InputLayer::forwardProp(PropagationType p)
 {
 	std::cout << "InputLayer::forwardProp" << std::endl;
+
+	unsigned height = _layerSize[0];
+	unsigned width = _layerSize[1];
+	unsigned depth = _layerSize[2];
+	//for(unsigned i=0; i<_layerSize[0]*_layerSize[1]*_layerSize[2]; ++i)
+	//	std::cout << _activations[i] << " ";
+	//std::cout << std::endl;
+
+	for(unsigned i=0; i<height; ++i)
+		for(unsigned j=0; j<width; ++j)
+			for(unsigned k=0; k<depth; ++k)
+			{
+				//std::cout << i << " " << j << " " << k << std::endl;
+				//std::cout << (*_vertices)[i][j][k]->activation() << std::endl;
+				//std::cout << "Here 1" << std::endl;
+				//std::cout << (*_state).size() << std::endl;
+				//std::cout << (int)((*_state)[i*width*depth + j*depth + k]) << std::endl;
+				//std::cout << "Here 2" << std::endl;
+				(*_vertices)[i][j][k]->setActivation((*_state)[i*width*depth + j*depth + k]);
+				//std::cout << "Here 3" << std::endl;
+			}
+	std::cout << "InputLayer::forwardProp" << std::endl;
+}
+
+/*
+void InputLayer::forwardPropTarget()
+{
+	std::cout << "InputLayer::forwardPropTarget" << std::endl;
 
 	unsigned length = _layerSize[0];
 	unsigned width = _layerSize[1];
@@ -79,7 +112,9 @@ void InputLayer::forwardProp()
 		for(unsigned j=0; j<width; ++j)
 			for(unsigned k=0; k<depth; ++k)
 				(*_vertices)[i][j][k]->setActivation((*_state)[i*width*depth + j*depth + k]);
+	
 }
+*/
 
 Tensor3d<Input3dVertex*>* InputLayer::vertices() const
 {
@@ -127,6 +162,7 @@ Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 	// Total number of weights is 3d-filter size times number of filters plus one bias for each filter. That is for each filter (depth dimension) there are
 	// (filterTotalSize + 1) weights. (filterTotalSize + 1)*_layerSize[2]
 	_weights = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
+	_cachedWeights = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
 	_TDUpdates = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
 	_dotProducts = std::vector<float>(layerTotalSize);
 	_activations = std::vector<float>(layerTotalSize + 1);
@@ -213,7 +249,7 @@ struct Conv3dTransform{
 	}
 };
 
-void Conv3dLayer::forwardProp()
+void Conv3dLayer::forwardProp(PropagationType p)
 {
 	std::cout << "Conv3dLayer::forwardProp" << std::endl;
 
@@ -224,7 +260,12 @@ void Conv3dLayer::forwardProp()
 
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.end());
-	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+	thrust::device_vector<float> weights(_weights.size());
+	if(p == PREDICTION)
+		thrust::copy(_weights.begin(), _weights.end(), weights.begin());
+	else if(p == TARGET)
+		thrust::copy(_cachedWeights.begin(), _cachedWeights.end(), weights.begin());
+	
 	thrust::device_vector<float> dotProducts(layerSize);
 	thrust::device_vector<float> activations(layerSize);
 
@@ -238,6 +279,15 @@ void Conv3dLayer::forwardProp()
 	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
+	
+	std::cout << "Conv3dLayer::forwardProp" << std::endl;
+}
+
+void Conv3dLayer::cacheWeights()
+{
+	std::cout << "DenseLayer::cacheWeights" << std::endl;
+
+	_cachedWeights = _weights;
 }
 
 /*thrust::device_ptr<float> Conv3dLayer::weightsToDevice() const
@@ -397,7 +447,7 @@ struct Pool3dTransform{
 
 };
 
-void Pool3dLayer::forwardProp()
+void Pool3dLayer::forwardProp(PropagationType p)
 {
 	std::cout << "Pool3dLayer::forwardProp" << std::endl;
 
@@ -418,6 +468,7 @@ void Pool3dLayer::forwardProp()
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
 	// Maybe try thrust::host_vector<float> as member vector as well. Also, make sure location of output vector is not changed.
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
+	std::cout << "Pool3dLayer::forwardProp" << std::endl;
 }
 
 unsigned Pool3dLayer::poolDim() const
@@ -447,6 +498,7 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 
 	std::vector<unsigned> curLayerSize = layerSize();
 	_weights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
+	_cachedWeights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_TDUpdates = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_dotProducts = std::vector<float>(_numHiddenUnits);
 	_activations = std::vector<float>(_numHiddenUnits + 1);
@@ -552,7 +604,7 @@ struct Dense1dTransform{
 	}
 };
 
-void DenseLayer::forwardProp()
+void DenseLayer::forwardProp(PropagationType p)
 {
 	std::cout << "DenseLayer::forwardProp" << std::endl;
 
@@ -565,7 +617,12 @@ void DenseLayer::forwardProp()
 
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.end());
-	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+	thrust::device_vector<float> weights(_weights.size());
+	if(p == PREDICTION)
+		thrust::copy(_weights.begin(), _weights.end(), weights.begin());
+	else if(p == TARGET)
+		thrust::copy(_cachedWeights.begin(), _cachedWeights.end(), weights.begin());
+
 	thrust::device_vector<float> dotProducts(layerSize);
 	thrust::device_vector<float> activations(layerSize);
 
@@ -579,6 +636,15 @@ void DenseLayer::forwardProp()
 	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
+	
+	std::cout << "DenseLayer::forwardProp" << std::endl;
+}
+
+void DenseLayer::cacheWeights()
+{
+	std::cout << "DenseLayer::cacheWeights" << std::endl;
+
+	_cachedWeights = _weights;
 }
 
 unsigned DenseLayer::numHiddenUnits() const

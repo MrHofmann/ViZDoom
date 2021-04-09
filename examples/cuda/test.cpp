@@ -10,9 +10,9 @@
 
 int main() 
 {
-	AgentConfig agent_conf = {3, 100, 10, 7, 1, 1};
-	NetworkConfig net_conf = {{6, 6, 3}, {3, 4}, {2, 2}, {1, 1}, {TANH, TANH}, {2, 2}, {1, 1}, {10, 5}, 3};
-	OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
+	AgentConfig agentConf = {3, 100, 10, 7, 1, 1};
+	NetworkConfig netConf = {{6, 6, 3}, {3, 4}, {2, 2}, {1, 1}, {TANH, TANH}, {2, 2}, {1, 1}, {10, 5}, 3};
+	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};
 		
 	vizdoom::BufferPtr screenBuf(new std::vector<uint8_t>(
 		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 ,30, 31, 32, 33, 34, 35,
@@ -51,10 +51,10 @@ int main()
 										1, 2, 3, 4, 1, 1};
 
 
-	DoomAgent agent(agent_conf, net_conf, opt_conf);				
-	agent.agent_start(screenBuf);		
+	DoomAgent agent(agentConf, netConf, optConf);				
+	agent.agentStart(screenBuf);		
  		
-	ActionValueNetwork *network = agent.get_network();
+	ActionValueNetwork *network = agent.getNetwork();
 	auto layers = network->getLayers();
 	auto iter = layers.begin();
 	iter++;
@@ -70,7 +70,7 @@ int main()
 	iter++;
 	((DenseLayer*)(*iter))->setWeights(dense3Weights);		
 	
-	std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
+	std::vector<double> currentAction = agent.agentStep(0.0, screenBuf);
 		
 	for(auto it=layers.begin(); it!=layers.end(); ++it)
 	{

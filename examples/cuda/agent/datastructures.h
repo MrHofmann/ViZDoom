@@ -155,28 +155,28 @@ struct Tensor1d
 
 struct NetworkConfig{
 	//self.rand_generator = np.random.RandomState(network_config.get("seed"))
-	std::vector<unsigned> state_dim;                // [W, H, C]
-	std::vector<unsigned> num_filters;  			// [F1, F2, ... , Fn]
-	std::vector<unsigned> filter_dim;       		// [F1s, F2s, ... , Fns]
-	std::vector<unsigned> filter_strides;   		// [Sf1, Sf2, ... , Sfn]
+	std::vector<unsigned> stateDim;                // [W, H, C]
+	std::vector<unsigned> numFilters;  			// [F1, F2, ... , Fn]
+	std::vector<unsigned> filterDim;       		// [F1s, F2s, ... , Fns]
+	std::vector<unsigned> filterStrides;   		// [Sf1, Sf2, ... , Sfn]
 	std::vector<ActivationType> activations; 		// [A1, A2, ... , An]
-	std::vector<unsigned> pool_dim;         		// [P1, P2, ... , Pn]
-	std::vector<unsigned> pool_strides;     		// [Sp1, Sp2, ... , Spn]
-	std::vector<unsigned> num_hidden_units; 		// [H1, H2, ... , Hm]
-	unsigned num_actions;
+	std::vector<unsigned> poolDim;         		// [P1, P2, ... , Pn]
+	std::vector<unsigned> poolStrides;     		// [Sp1, Sp2, ... , Spn]
+	std::vector<unsigned> numHiddenUnits; 		// [H1, H2, ... , Hm]
+	unsigned numActions;
 };
 
 struct OptimizerConfig{
-	double step_size;
-	double beta_m;
-	double beta_v;
+	double stepSize;
+	double betaM;
+	double betaV;
 	double epsilon;
 };
 
 struct AgentConfig{
-	unsigned num_actions;
-	unsigned num_replay;
-	unsigned num_minibatch;
+	unsigned numActions;
+	unsigned numReplay;
+	unsigned numMinibatch;
 	unsigned seed;
 	double discount;
 	double tau;
@@ -187,7 +187,7 @@ struct ExperienceSample{
 	std::vector<double> action;
 	double reward;
 	bool terminal;
-	vizdoom::BufferPtr next_state;
+	vizdoom::BufferPtr nextState;
 };
 
 #endif // DATASTRUCTURES_H

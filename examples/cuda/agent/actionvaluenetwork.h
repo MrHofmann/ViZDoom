@@ -25,9 +25,11 @@ public:
 	ActionValueNetwork(){}
 	ActionValueNetwork(const NetworkConfig &conf);
 	void initInput(vizdoom::BufferPtr s);
-	std::vector<float> getActionValues(vizdoom::BufferPtr s);
+	void cacheWeights();
+	std::vector<float> getActionValuePreds(vizdoom::BufferPtr s);
+	std::vector<float> getActionValueTargets(vizdoom::BufferPtr s);
 	std::list<NetworkLayer*> getLayers() const;
-	//std::vector<std::vector<double>> get_td_update(vizdoom::BufferPtr s, const std::vector<double> &delta_mat);
+	void getTDUpdate(vizdoom::BufferPtr s, const std::vector<float> &delta_mat);
 	//void init_saxe(unsigned num_rows, unsigned num_cols);
 	//void init_kaiming();
 };

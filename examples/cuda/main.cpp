@@ -84,10 +84,10 @@ int main() {
     std::srand(time(0));
 			
     int episodes = 10;
-	AgentConfig agent_conf = {8, 100, 10, 7, 1, 1};
-	NetworkConfig net_conf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
-	OptimizerConfig opt_conf = {0.1, 0.2, 0.3, 0.5};
-	DoomAgent agent(agent_conf, net_conf, opt_conf);
+	AgentConfig agentConf = {8, 20, 10, 7, 1, 1};
+	NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
+	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};
+	DoomAgent agent(agentConf, netConf, optConf);
 	//agent.agent_init();
 
     // Pause the engine after each action. Easier to keep track of what's happening
@@ -112,7 +112,7 @@ int main() {
 
 //----------------------------------------------------------------------------//
 //			AGENT STEP FUNCTION APPROXIMATOR GOES HERE						//
-			std::vector<double> currentAction = agent.agent_step(0.0, screenBuf);
+			std::vector<double> currentAction = agent.agentStep(0.0, screenBuf);
 			//for(unsigned j=0; j<current_action.size(); ++j)
 				//	std::cout << current_action[j] << " ";
 			//std::cout << std::endl;

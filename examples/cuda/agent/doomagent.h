@@ -9,64 +9,65 @@
 
 class AdamOptimizer{
 private:
-	std::vector<unsigned> num_filters;
-	std::vector<unsigned> num_hidden_units;
-	double step_size;
-	double beta_m;
-	double beta_v;
-	double epsilon;
+	std::vector<unsigned> _numFilters;
+	std::vector<unsigned> _numHiddenUnits;
+	double _stepSize;
+	double _betaM;
+	double _betaV;
+	double _epsilon;
 	
-	std::vector<std::vector<double>> m;
-	std::vector<std::vector<double>> v;
+	std::vector<std::vector<double>> _m;
+	std::vector<std::vector<double>> _v;
 
 public:
 	AdamOptimizer(){}
-	AdamOptimizer(const NetworkConfig &net_conf, const OptimizerConfig &opt_conf)
-		:step_size(opt_conf.step_size), beta_m(opt_conf.beta_m), beta_v(opt_conf.beta_v), epsilon(opt_conf.epsilon)
+	AdamOptimizer(const NetworkConfig &netConf, const OptimizerConfig &optConf)
+		:_stepSize(optConf.stepSize), _betaM(optConf.betaM), _betaV(optConf.betaV), _epsilon(optConf.epsilon)
 	{
 		//INIT
-		std::cout << "AdamOptimizer init" << std::endl;
+		std::cout << "AdamOptimizer::AdamOptimizer" << std::endl;
 	}
-	std::vector<std::vector<double>> update_weights(const std::vector<std::vector<double>> weights,
-	const std::vector<std::vector<double>> td_errors_times_grads);
+	std::vector<std::vector<double>> updateWeights(const std::vector<std::vector<double>> &weights,
+	const std::vector<std::vector<double>> &tdErrorsTimesGrads);
 };
 
 
 class DoomAgent{
 private:
-	ExperienceReplayBuffer replay_buffer;
-	ActionValueNetwork network;
-	AdamOptimizer optimizer;
-	unsigned num_actions;
-	unsigned num_replay;
-	double discount;
-	double tau;
+	ExperienceReplayBuffer _replayBuffer;
+	ActionValueNetwork _network;
+	AdamOptimizer _optimizer;
+	unsigned _numActions;
+	unsigned _numReplay;
+	double _discount;
+	double _tau;
 	
 	//self.rand_generator = np.random.RandomState(agent_config.get("seed"))
 
 	//vizdoom::GameStatePtr game_state;	
-	vizdoom::BufferPtr last_state;	
-	std::vector<double> last_action;
-	double sum_rewards;
-	unsigned episode_steps;
+	vizdoom::BufferPtr _lastState;	
+	std::vector<double> _lastAction;
+	double _sumRewards;
+	unsigned _episodeSteps;
 
-	std::vector<double> random_action_with_prob(const std::vector<double> &probs) const;
-	void optimize_network(const std::vector<ExperienceSample> &exp, ActionValueNetwork q);
+	std::vector<double> softmax(const std::vector<float> &actionValues) const;
+	std::vector<double> randomActionWithProb(const std::vector<double> &probs) const;
+	void optimizeNetwork(const std::vector<ExperienceSample> &exp, ActionValueNetwork q);
 
 public:
 	DoomAgent()
 	{	
 		//INIT
-		std::cout << "DoomAgent::agent_init" << std::endl;
+		std::cout << "DoomAgent::agentInit" << std::endl;
 	}
-	DoomAgent(const AgentConfig &agent_conf, const NetworkConfig &net_conf, const OptimizerConfig &opt_conf);
+	DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf, const OptimizerConfig &optConf);
 	std::vector<double> policy(vizdoom::BufferPtr state);
-	std::vector<double> agent_start(vizdoom::BufferPtr state);
-	std::vector<double> agent_step(double reward, vizdoom::BufferPtr state);
-	void agent_end(double reward);
-	double agent_message(std::string message) const;
+	std::vector<double> agentStart(vizdoom::BufferPtr state);
+	std::vector<double> agentStep(double reward, vizdoom::BufferPtr state);
+	void agentEnd(double reward);
+	//double agentMessage(std::string message) const;
 
-	ActionValueNetwork *get_network();
+	ActionValueNetwork *getNetwork();
 };
 
 #endif // DOOMAGENT_H
