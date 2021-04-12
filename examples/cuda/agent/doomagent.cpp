@@ -136,9 +136,9 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 			////std::vector<std::vector<float>> qNextMat;
 			////std::vector<std::vector<float>> qMat;
 			std::vector<double> deltaVec;
-			// First experience sample causes crash so it is skipped.
-			for(unsigned j=1; j<experiences.size(); ++j)
+			for(unsigned j=0; j<experiences.size(); ++j)
 			{
+				// Compute action value targets using Expected SARSA method.
 				//std::vector<float> qNextVec = currentQ.getActionValues(experiences[j].nextState);
 				std::vector<float> qNextVec = _network.getActionValueTargets(experiences[j].nextState);
 				////qNextMat.push_back(qNextVec);
@@ -148,13 +148,19 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 					vNext += probsNextVec[k]*qNextVec[k];
 				double target = experiences[j].reward + _discount*vNext;
 				
+				// Compute action value predictions and TD Error.
 				std::vector<float> qVec = _network.getActionValuePreds(experiences[j].state);
 				////qMat.push_back(qVec);
 				std::vector<double> eAction = experiences[j].action;
 				unsigned a = 0;
 				for(unsigned k=0; k<eAction.size(); ++k)
 					a += (1 << k)*eAction[eAction.size()-1 - k];
-				deltaVec.push_back(target - qVec[a]);
+				double delta = target - qVec[a];
+				deltaVec.push_back(delta);
+
+				// Compute gradients and multiply with TD Error (delta).
+				// Also clear TDUpdates structures in layers before beginning of loop.
+				_network.getTDUpdate(j, eAction, delta);
 			}
 		}
 	}

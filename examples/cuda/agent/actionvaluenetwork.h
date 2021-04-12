@@ -24,14 +24,15 @@ private:
 public:
 	ActionValueNetwork(){}
 	ActionValueNetwork(const NetworkConfig &conf);
+	//void init_saxe(unsigned num_rows, unsigned num_cols);
+	//void init_kaiming();
 	void initInput(vizdoom::BufferPtr s);
 	void cacheWeights();
 	std::vector<float> getActionValuePreds(vizdoom::BufferPtr s);
 	std::vector<float> getActionValueTargets(vizdoom::BufferPtr s);
+	void getTDUpdate(unsigned expNum, const std::vector<double> &action, double delta);
+	
 	std::list<NetworkLayer*> getLayers() const;
-	void getTDUpdate(vizdoom::BufferPtr s, const std::vector<float> &delta_mat);
-	//void init_saxe(unsigned num_rows, unsigned num_cols);
-	//void init_kaiming();
 };
 
 #endif // ACTIONVALUENETWORK_H

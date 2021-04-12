@@ -88,7 +88,6 @@ int main() {
 	NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
 	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};
 	DoomAgent agent(agentConf, netConf, optConf);
-	//agent.agent_init();
 
     // Pause the engine after each action. Easier to keep track of what's happening
     unsigned int sleepTime = 1000 / DEFAULT_TICRATE; // = 28
@@ -97,7 +96,7 @@ int main() {
 		unsigned b = 0;
         //It is not needed right after init(). It doesn't cost much and is nicer.
         game->newEpisode();
-		//agent.agent_start(game->getState()->screenBuffer);
+		agent.agentStart(game->getState()->screenBuffer);
         while (!game->isEpisodeFinished()) {
 			auto start = std::chrono::high_resolution_clock::now(); 
             GameStatePtr state = game->getState(); //is std::shared_ptr<GameState>

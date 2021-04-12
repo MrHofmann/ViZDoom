@@ -155,6 +155,16 @@ std::vector<float> ActionValueNetwork::getActionValueTargets(vizdoom::BufferPtr 
 	return std::vector<float>(actionValues.begin(), actionValues.end()-1);
 }
 
+void ActionValueNetwork::getTDUpdate(unsigned expNum, const std::vector<double> &action, double delta)
+{
+	std::cout << "ActionValueNetwork::getTDUpdate" << std::endl;
+
+	std::vector<std::vector<float>> deltaMat;
+	NetworkLayer *output = _layers.back();
+	for(auto it=_layers.rbegin(); it!=_layers.rend(); it++)
+		(*it)->backProp(expNum, action, delta);
+}
+
 std::list<NetworkLayer*> ActionValueNetwork::getLayers() const
 {
 	std::cout << "ActionValueNetwork::getLayers" << std::endl;

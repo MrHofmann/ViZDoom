@@ -80,24 +80,18 @@ void InputLayer::forwardProp(PropagationType p)
 	unsigned height = _layerSize[0];
 	unsigned width = _layerSize[1];
 	unsigned depth = _layerSize[2];
-	//for(unsigned i=0; i<_layerSize[0]*_layerSize[1]*_layerSize[2]; ++i)
-	//	std::cout << _activations[i] << " ";
-	//std::cout << std::endl;
 
 	for(unsigned i=0; i<height; ++i)
 		for(unsigned j=0; j<width; ++j)
 			for(unsigned k=0; k<depth; ++k)
-			{
-				//std::cout << i << " " << j << " " << k << std::endl;
-				//std::cout << (*_vertices)[i][j][k]->activation() << std::endl;
-				//std::cout << "Here 1" << std::endl;
-				//std::cout << (*_state).size() << std::endl;
-				//std::cout << (int)((*_state)[i*width*depth + j*depth + k]) << std::endl;
-				//std::cout << "Here 2" << std::endl;
 				(*_vertices)[i][j][k]->setActivation((*_state)[i*width*depth + j*depth + k]);
-				//std::cout << "Here 3" << std::endl;
-			}
+
 	std::cout << "InputLayer::forwardProp" << std::endl;
+}
+
+void InputLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
+{
+	std::cout << "InputLayer::backProp" << std::endl;	
 }
 
 /*
@@ -281,6 +275,11 @@ void Conv3dLayer::forwardProp(PropagationType p)
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
 	std::cout << "Conv3dLayer::forwardProp" << std::endl;
+}
+
+void Conv3dLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
+{
+	std::cout << "Conv3dLayer::backProp" << std::endl;	
 }
 
 void Conv3dLayer::cacheWeights()
@@ -471,6 +470,11 @@ void Pool3dLayer::forwardProp(PropagationType p)
 	std::cout << "Pool3dLayer::forwardProp" << std::endl;
 }
 
+void Pool3dLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
+{
+	std::cout << "Pool3dLayer::backProp" << std::endl;	
+}
+
 unsigned Pool3dLayer::poolDim() const
 {
 	//std::cout << "Pool3dLayer::poolDim" << std::endl;	
@@ -638,6 +642,18 @@ void DenseLayer::forwardProp(PropagationType p)
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
 	std::cout << "DenseLayer::forwardProp" << std::endl;
+}
+
+void DenseLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
+{
+	std::cout << "DenseLayer::backProp" << std::endl;
+
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> prevAct(act.begin(), act.end());
+	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+	thrust::device_vector<float> actGrad(_activations.size());
+	thrust::device_vector<float> tdUpdates(_weights.size());
+	thrust::device_vector<float> prevActGrad(act.size());
 }
 
 void DenseLayer::cacheWeights()

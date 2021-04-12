@@ -23,6 +23,7 @@ public:
 	virtual ~NetworkLayer(){std::cout << "Delete NetworkLayer: " << this->layerName() << std::endl;}
 	virtual LayerType layerType() const = 0;
 	virtual void forwardProp(PropagationType p) = 0;
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta) = 0;
 	//virtual void forwardPropTarget() = 0;
 	std::string layerName() const;
 	ActivationType activationType() const;
@@ -41,6 +42,7 @@ public:
 	InputLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
 	//virtual void forwardPropTarget();
 
 	Tensor3d<Input3dVertex*>* vertices() const;
@@ -64,6 +66,7 @@ public:
 	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fdi, unsigned fde, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
 	//virtual void forwardPropTarget();
 	void cacheWeights();
 	//thrust::device_ptr<float> weightsToDevice() const;
@@ -90,6 +93,7 @@ public:
 	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
 	//virtual void forwardPropTarget();
 
 	unsigned poolDim() const;
@@ -111,6 +115,7 @@ public:
 	DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
 	//virtual void forwardPropTarget();
 	void cacheWeights();
 
