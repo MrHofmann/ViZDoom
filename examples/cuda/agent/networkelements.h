@@ -8,15 +8,17 @@ class Vertex;
 class Edge{
 private:
 	Vertex *_inputVertex;
-	Vertex *_outputVertex;
+	float *_outGrad;
+	//Vertex *_outputVertex;
 
 public:
 	enum EdgeType {WEIGHTED, UNWEIGHTED};
 
 	Edge(){}
-	Edge(Vertex *u, Vertex *v);
+	Edge(Vertex *u/*, Vertex *v*/, float *_outGrad);
 	virtual EdgeType edgeType() const = 0;
 	Vertex *inputVertex() const;
+	float outGrad() const;
 };
 
 class WeightedEdge : public Edge{
@@ -27,7 +29,7 @@ private:
 
 public:
 	WeightedEdge(){}
-	WeightedEdge(Vertex *u, Vertex *v, float *w, float *tdu);
+	WeightedEdge(Vertex *u, /*Vertex *v,*/ float *og, float *w, float *tdu);
 	virtual Edge::EdgeType edgeType() const;
 	float weight() const;
 };
@@ -43,6 +45,7 @@ class Vertex{
 private:
     float *_activation;
 	float _inputGrad;
+	std::vector<Edge*> _outputEdges;
 
 public:
     enum VertexType {BIAS, INPUT, A_RELU, A_LRELU, A_TANH, A_SIGM, P_MAX, P_AVG};
@@ -52,6 +55,8 @@ public:
     virtual VertexType vertexType() const = 0;
 	float activation() const;
 	void setActivation(float a);
+	void addOutputEdge(Edge *e);
+	std::vector<Edge*> outputEdges() const;
 };
 
 class BiasVertex : public Vertex{

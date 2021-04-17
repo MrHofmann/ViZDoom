@@ -1,7 +1,7 @@
 #include "networkelements.h"
 
-Edge::Edge(Vertex *u, Vertex *v)
-	:_inputVertex(u), _outputVertex(v)
+Edge::Edge(Vertex *u/*, Vertex *v*/, float *og)
+	:_inputVertex(u)/*, _outputVertex(v)*/, _outGrad(og)
 {
 	//std::cout << "Edge::Edge" << std::endl;
 }
@@ -13,8 +13,15 @@ Vertex *Edge::inputVertex() const
 	return _inputVertex;
 }
 
-WeightedEdge::WeightedEdge(Vertex *u, Vertex *v, float *w, float *tdu)
-	:Edge(u, v), _weight(w), _TDUpdate(tdu)
+float Edge::outGrad() const
+{
+	//std::cout << "Edge::outGrad" << std::endl;
+	
+	return *_outGrad;
+}
+
+WeightedEdge::WeightedEdge(Vertex *u, /*Vertex *v,*/ float *og, float *w, float *tdu)
+	:Edge(u/*, v*/, og), _weight(w), _TDUpdate(tdu)
 {
 	//std::cout << "WeightedEdge::WeightedEdge" << std::endl;
 }
@@ -44,6 +51,8 @@ Vertex::Vertex(float *a, float ing)
 	:_activation(a), _inputGrad(ing)
 {
 	//std::cout << "Vertex::Vertex" << std::endl;
+	
+	_outputEdges = std::vector<Edge*>();
 }
 
 float Vertex::activation() const
@@ -58,6 +67,20 @@ void Vertex::setActivation(float a)
 	//std::cout << "Vertex::setActivation" << std::endl;
 
 	*_activation = a;
+}
+
+void Vertex::addOutputEdge(Edge *e)
+{
+	//std::cout << "Vertex::addOutputEdge" << std::endl;
+	
+	_outputEdges.push_back(e);
+}
+
+std::vector<Edge*> Vertex::outputEdges() const
+{
+	//std::cout << "Vertex::outputEdges" << std::endl;
+	
+	return _outputEdges;
 }
 
 //-----------

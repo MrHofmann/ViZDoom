@@ -28,7 +28,7 @@ void DoomAgent::optimizeNetwork(const std::vector<ExperienceSample> &exp, Action
 
 std::vector<double> DoomAgent::softmax(const std::vector<float> &actionValues) const
 {
-	std::cout << "DoomAgent::softmax" << std::endl;
+	//std::cout << "DoomAgent::softmax" << std::endl;
 
 	// Compute the preferences by dividing the action-values by the temperature parameter tau
 	std::vector<double> preferences;
@@ -131,7 +131,9 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 		for(unsigned i=0; i<_numReplay; ++i)
 		{
 			std::vector<ExperienceSample> experiences = _replayBuffer.sample();
-			
+		
+			//Clear TDUpdates structure here.
+
 			//optimizeNetwork(experiences, currentQ);
 			////std::vector<std::vector<float>> qNextMat;
 			////std::vector<std::vector<float>> qMat;
@@ -162,6 +164,8 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 				// Also clear TDUpdates structures in layers before beginning of loop.
 				_network.getTDUpdate(j, eAction, delta);
 			}
+
+			// Update weights here using ADAM optimizer.
 		}
 	}
 

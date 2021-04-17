@@ -75,7 +75,7 @@ NetworkLayer::LayerType InputLayer::layerType() const
 
 void InputLayer::forwardProp(PropagationType p)
 {
-	std::cout << "InputLayer::forwardProp" << std::endl;
+	//std::cout << "InputLayer::forwardProp" << std::endl;
 
 	unsigned height = _layerSize[0];
 	unsigned width = _layerSize[1];
@@ -86,12 +86,12 @@ void InputLayer::forwardProp(PropagationType p)
 			for(unsigned k=0; k<depth; ++k)
 				(*_vertices)[i][j][k]->setActivation((*_state)[i*width*depth + j*depth + k]);
 
-	std::cout << "InputLayer::forwardProp" << std::endl;
+	//std::cout << "InputLayer::forwardProp" << std::endl;
 }
 
 void InputLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
 {
-	std::cout << "InputLayer::backProp" << std::endl;	
+	//std::cout << "InputLayer::backProp" << std::endl;	
 }
 
 /*
@@ -158,6 +158,7 @@ Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 	_weights = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
 	_cachedWeights = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
 	_TDUpdates = std::vector<float>(filterTotalSize*_layerSize[2] + _layerSize[2]);
+	_outGrads = std::vector<float>((filterTotalSize + 1)*layerTotalSize);
 	_dotProducts = std::vector<float>(layerTotalSize);
 	_activations = std::vector<float>(layerTotalSize + 1);
 
@@ -176,13 +177,18 @@ Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 						for(unsigned d=0; d<_filterDepth; ++d)
 						{
 							int eIndex = k*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
-							WeightedEdge *e = new WeightedEdge((*prevVertices)[i+h][j+w][d], v, &_weights[eIndex], &_TDUpdates[eIndex]);
+							int gIndex = vIndex*(filterTotalSize + 1) + h*_filterDim*_filterDepth + w*_filterDepth + d;
+							WeightedEdge *e = new WeightedEdge((*prevVertices)[i+h][j+w][d], /*v,*/ &_outGrads[gIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
 							//(*inputEdges)[h][w][d] = e;
 							(*inputEdges)[h*_filterDim*_filterDepth + w*_filterDepth + d] = e;
+							(*prevVertices)[i+h][j+w][d]->addOutputEdge(e);
 						}
 
 				int eIndex = k*(filterTotalSize + 1) + filterTotalSize;
-				(*inputEdges)[filterTotalSize] = new WeightedEdge(biasVertex(), v, &_weights[eIndex], &_TDUpdates[eIndex]);
+				int gIndex = vIndex*(filterTotalSize + 1) + filterTotalSize;
+				WeightedEdge *e = new WeightedEdge(biasVertex(), /*v,*/ &_outGrads[gIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
+				(*inputEdges)[filterTotalSize] = e;
+				biasVertex()->addOutputEdge(e);
 				(*_vertices)[i][j][k] = v;
 			}
 }
@@ -245,7 +251,7 @@ struct Conv3dTransform{
 
 void Conv3dLayer::forwardProp(PropagationType p)
 {
-	std::cout << "Conv3dLayer::forwardProp" << std::endl;
+	//std::cout << "Conv3dLayer::forwardProp" << std::endl;
 
 	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
 	int inputHeight = _prevLayer->layerSize()[0];
@@ -274,17 +280,119 @@ void Conv3dLayer::forwardProp(PropagationType p)
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
-	std::cout << "Conv3dLayer::forwardProp" << std::endl;
+	//std::cout << "Conv3dLayer::forwardProp" << std::endl;
 }
+
+struct Conv3dBack{
+	float *_inGrad;
+	float *_dotProducts;
+	float *_prevAct;
+	float *_weights;
+	float *_outGrads;
+	float _delta;
+	unsigned _filterDim;
+	unsigned _filterDepth;
+	unsigned _layerHeight;
+	unsigned _layerWidth;
+	unsigned _layerDepth;
+	unsigned _prevLayerWidth;
+	unsigned _prevLayerDepth;
+
+	Conv3dBack(float *ig, float *dp, float *pa, float *w, float *og, float d, 
+			unsigned fdi, unsigned fde, unsigned lh, unsigned lw, unsigned ld, unsigned plw, unsigned pld)
+		:_inGrad(ig), _dotProducts(dp), _prevAct(pa), _weights(w), _outGrads(og), _delta(d),
+		_filterDim(fdi), _filterDepth(fde), _layerHeight(lh), _layerWidth(lw), _layerDepth(ld), _prevLayerWidth(plw), _prevLayerDepth(pld)
+	{}
+	__host__ __device__ float operator()(size_t widx)
+	{
+		// actGrad = gradRelu(inGrad, dotProduct)
+		// outGrad = weight*actGrad = weight*gradRelu(inGrad, dotProduct)
+		// weightGrad = prevAct*actGrad = prevAct*gradRelu(inGrad, dotProduct) 
+		// tdUpdate = weightGrad*delta
+
+		int weightsTotalSize = _filterDim*_filterDim*_filterDepth + 1;
+		// The channel in which weight widx is located.
+		int k = widx/weightsTotalSize;
+		// Location of widx and its edge in input edges of each vertex.
+		int r = widx - k*weightsTotalSize;
+
+		int h = r/_filterDim*_filterDepth;
+		int wd = r - h*_filterDim*_filterDepth;
+		int w = wd/_filterDepth;
+		int d = wd - w*_filterDepth;
+
+		// Fixating the k-th channel because weight widx is common only for that channel.
+		float tdUpdate = 0;
+		for(unsigned i=0; i<_layerHeight; ++i)
+			for(unsigned j=0; j<_layerWidth; ++j)
+			{
+				int vidx = i*_layerWidth*_layerDepth + j*_layerDepth + k;
+				float actGrad = (_dotProducts[vidx] >= 0)? _inGrad[vidx] : 0;
+
+				int gidx = vidx*weightsTotalSize + r;
+				_outGrads[gidx] = _weights[widx]*actGrad;
+
+				// If current weight widx is bias then previous activation is one.
+				if(r == weightsTotalSize - 1)
+					tdUpdate += actGrad*_delta;
+				else
+				{
+					// This is the vertex from previous layer that is connected via edge of widx. First is calculated the top left vertex 
+					// in previous layer (vidx + skipped vertices because of filter size) and then adding the precise location of wanted
+					// vertex in convolution block with respect to top left corner. It is easier to understand on a drawing.
+					int aidx = vidx + i*(_filterDim - 1)*_prevLayerDepth + h*_prevLayerWidth*_prevLayerDepth + w*_prevLayerDepth + d;
+					tdUpdate += _prevAct[aidx]*actGrad*_delta;					
+				}
+			}
+
+		return tdUpdate;
+	}
+};
 
 void Conv3dLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
 {
-	std::cout << "Conv3dLayer::backProp" << std::endl;	
+	//std::cout << "Conv3dLayer::backProp" << std::endl;
+
+	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	std::vector<float> grad(layerTotalSize);
+	for(unsigned i=0; i<_layerSize[0]; ++i)
+		for(unsigned j=0; j<_layerSize[1]; ++j)
+			for(unsigned k=0; k<_layerSize[2]; ++k)
+			{
+				int gidx = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
+				std::vector<Edge*> outputEdges = (*_vertices)[i][j][k]->outputEdges();
+				float inGrad = 0;
+				for(int l=0; l<outputEdges.size(); ++l)
+					inGrad += outputEdges[l]->outGrad();
+		
+				grad[gidx] = inGrad;
+			}
+
+	thrust::device_vector<float> inGrads(grad.begin(), grad.end());
+	thrust::device_vector<float> dotProducts(_dotProducts.begin(), _dotProducts.end());
+	//thrust::device_vector<float> actGrad(_activations.size());
+
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> prevAct(act.begin(), act.end());
+	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+
+	thrust::device_vector<float> outGrads(_outGrads.size());
+	thrust::device_vector<float> tdUpdates(_TDUpdates.size());
+
+	std::vector<unsigned> prevLayerSize = _prevLayer->layerSize();
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(_weights.size()), tdUpdates.begin(), 
+		Conv3dBack(thrust::raw_pointer_cast(inGrads.data()), thrust::raw_pointer_cast(dotProducts.data()), 
+			thrust::raw_pointer_cast(prevAct.data()), thrust::raw_pointer_cast(weights.data()), thrust::raw_pointer_cast(outGrads.data()), delta,
+			_filterDim, _filterDepth, _layerSize[0], _layerSize[1], _layerSize[2], prevLayerSize[1], prevLayerSize[2]));
+	cudaDeviceSynchronize();
+
+	thrust::copy(outGrads.begin(), outGrads.end(), _outGrads.begin());
+	thrust::copy(tdUpdates.begin(), tdUpdates.end(), _TDUpdates.begin());		
 }
 
 void Conv3dLayer::cacheWeights()
 {
-	std::cout << "DenseLayer::cacheWeights" << std::endl;
+	//std::cout << "Conv3dLayer::cacheWeights" << std::endl;
 
 	_cachedWeights = _weights;
 }
@@ -379,6 +487,7 @@ Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 
 	Tensor3d<Conv3dVertex*> *prevVertices = ((Conv3dLayer*)prevLayer)->vertices();
 	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	_outGrads = std::vector<float>(_poolDim*_poolDim*layerTotalSize);
 	_activations = std::vector<float>(layerTotalSize + 1);
 	_vertices = new Tensor3d<Pool3dVertex*>(_layerSize[0], _layerSize[1], _layerSize[2]);
 	_bias = new BiasVertex(&_activations[layerTotalSize], 0);
@@ -392,8 +501,10 @@ Pool3dLayer::Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 				for(unsigned h=0; h<_poolDim; ++h)
 					for(unsigned w=0; w<_poolDim; ++w)
 					{
-							UnweightedEdge *e = new UnweightedEdge((*prevVertices)[i+h][j+w][k], v);
-							(*inputEdges)[h][w] = e;
+						int gIndex = vIndex*_poolDim*_poolDim + h*_poolDim + w;
+						UnweightedEdge *e = new UnweightedEdge((*prevVertices)[i+h][j+w][k]/*, v*/, &_outGrads[gIndex]);
+						(*inputEdges)[h][w] = e;
+						(*prevVertices)[i+h][j+w][k]->addOutputEdge(e);
 					}				
 
 				(*_vertices)[i][j][k] = v;
@@ -448,7 +559,7 @@ struct Pool3dTransform{
 
 void Pool3dLayer::forwardProp(PropagationType p)
 {
-	std::cout << "Pool3dLayer::forwardProp" << std::endl;
+	//std::cout << "Pool3dLayer::forwardProp" << std::endl;
 
 	int layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
 	int inputHeight = _prevLayer->layerSize()[0];
@@ -467,12 +578,85 @@ void Pool3dLayer::forwardProp(PropagationType p)
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
 	// Maybe try thrust::host_vector<float> as member vector as well. Also, make sure location of output vector is not changed.
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
-	std::cout << "Pool3dLayer::forwardProp" << std::endl;
+	//std::cout << "Pool3dLayer::forwardProp" << std::endl;
 }
+
+struct Pool3dBack{
+	float *_inGrad;
+	float *_prevAct;
+	unsigned _poolDim;
+	unsigned _layerHeight;
+	unsigned _layerWidth;
+	unsigned _layerDepth;
+
+	Pool3dBack(float *ig, float *pa, unsigned pd, unsigned lh, unsigned lw, unsigned ld)
+		:_inGrad(ig), _prevAct(pa), _poolDim(pd), _layerHeight(lh), _layerWidth(lw), _layerDepth(ld)
+	{}
+	__host__ __device__ float operator()(size_t eidx)
+	{
+		// outGrad = gradPool(inGrad, prevAct)
+
+		int vidx = eidx/(_poolDim*_poolDim);
+		int i = vidx/(_layerWidth*_layerDepth);
+		//int jk = vidx - i*_layerWidth*_layerDepth;
+		//int j = jk/_layerDepth;
+		//int k = jk - j*_layerDepth;
+
+		int hwp = eidx - vidx*_poolDim*_poolDim;
+		int hp = hwp/_poolDim;
+		int wp = hwp - hp*_poolDim;
+		
+		int aidx = vidx + i*(_poolDim - 1)*_layerDepth;
+		unsigned eix = aidx + hp*_poolDim*_layerDepth + wp*_layerDepth;
+		float outGrad = _inGrad[vidx];
+		for(unsigned h=0; h<_poolDim; ++h)
+			for(unsigned w=0; w<_poolDim; ++w)
+			{
+				unsigned aix = aidx + h*_poolDim*_layerDepth + w*_layerDepth;
+				if(_prevAct[aix] > _prevAct[eix])
+					return 0;
+			}
+
+		return outGrad;
+	}
+};
+
 
 void Pool3dLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
 {
-	std::cout << "Pool3dLayer::backProp" << std::endl;	
+	//std::cout << "Pool3dLayer::backProp" << std::endl;
+
+	int layerTotalSize = _layerSize[0]*_layerSize[1]*_layerSize[2];
+	std::vector<float> grad(layerTotalSize);
+	for(unsigned i=0; i<_layerSize[0]; ++i)
+		for(unsigned j=0; j<_layerSize[1]; ++j)
+			for(unsigned k=0; k<_layerSize[2]; ++k)
+			{
+				int gidx = i*_layerSize[1]*_layerSize[2] + j*_layerSize[2] + k;
+				std::vector<Edge*> outputEdges = (*_vertices)[i][j][k]->outputEdges();
+				float inGrad = 0;
+				for(int l=0; l<outputEdges.size(); ++l)
+					inGrad += outputEdges[l]->outGrad();
+		
+				grad[gidx] = inGrad;
+			}
+
+	thrust::device_vector<float> inGrads(grad.begin(), grad.end());
+	//thrust::device_vector<float> dotProducts(_dotProducts.begin(), _dotProducts.end());
+	//thrust::device_vector<float> actGrad(_activations.size());
+
+	std::vector<float> act = _prevLayer->activations();
+	thrust::device_vector<float> prevAct(act.begin(), act.end());
+	//thrust::device_vector<float> weights(_weights.begin(), _weights.end());
+
+	thrust::device_vector<float> outGrads(_outGrads.size());
+	//thrust::device_vector<float> tdUpdates(_TDUpdates.size());
+
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(outGrads.size()), outGrads.begin(), 
+		Pool3dBack(thrust::raw_pointer_cast(inGrads.data()), thrust::raw_pointer_cast(prevAct.data()), _poolDim, _layerSize[0], _layerSize[1], _layerSize[2]));
+	cudaDeviceSynchronize();
+
+	thrust::copy(outGrads.begin(), outGrads.end(), _outGrads.begin());		
 }
 
 unsigned Pool3dLayer::poolDim() const
@@ -504,6 +688,7 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 	_weights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_cachedWeights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_TDUpdates = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
+	_outGrads = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
 	_dotProducts = std::vector<float>(_numHiddenUnits);
 	_activations = std::vector<float>(_numHiddenUnits + 1);
 
@@ -524,13 +709,15 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 			{
 				int eIndex = i*(prevTotalSize + 1) + j;
 				Vertex *u = (*prevVertices)[j];
-				WeightedEdge *e = new WeightedEdge(u, v, &_weights[eIndex], &_TDUpdates[eIndex]);
+				WeightedEdge *e = new WeightedEdge(u, /*v,*/ &_outGrads[eIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
 				(*inputEdges)[j] = e;
+				u->addOutputEdge(e);
 			}
 		
 			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
-			WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
+			WeightedEdge *e = new WeightedEdge(prevBias, /*v,*/ &_outGrads[eIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
 			(*inputEdges)[prevTotalSize] = e;
+			prevBias->addOutputEdge(e);
 
 		}
 	    else
@@ -558,13 +745,15 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
             		for(unsigned d=0; d<prevLayerSize[2]; ++d)
                 	{
 						int eIndex = i*(prevTotalSize + 1) + h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d;
-	           			WeightedEdge *e = new WeightedEdge((*prevVertices)[h][w][d], v, &_weights[eIndex], &_TDUpdates[eIndex]);
+	           			WeightedEdge *e = new WeightedEdge((*prevVertices)[h][w][d], /*v,*/ &_outGrads[eIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
 						(*inputEdges)[h*prevLayerSize[1]*prevLayerSize[2] + w*prevLayerSize[2] + d] = e;
-                	}
+						(*prevVertices)[h][w][d]->addOutputEdge(e);
+					}
 
 			int eIndex = i*(prevTotalSize + 1) + prevTotalSize;
-	        WeightedEdge *e = new WeightedEdge(prevBias, v, &_weights[eIndex], &_TDUpdates[eIndex]);
+	        WeightedEdge *e = new WeightedEdge(prevBias, /*v,*/ &_outGrads[eIndex], &_weights[eIndex], &_TDUpdates[eIndex]);
 			(*inputEdges)[prevTotalSize] = e;
+			prevBias->addOutputEdge(e);
 		}
 
 		(*_vertices)[i] = v;
@@ -610,7 +799,7 @@ struct Dense1dTransform{
 
 void DenseLayer::forwardProp(PropagationType p)
 {
-	std::cout << "DenseLayer::forwardProp" << std::endl;
+	//std::cout << "DenseLayer::forwardProp" << std::endl;
 
 	int layerSize = _layerSize[0];
 	int prevLayerSize;
@@ -641,24 +830,84 @@ void DenseLayer::forwardProp(PropagationType p)
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
-	std::cout << "DenseLayer::forwardProp" << std::endl;
+	//std::cout << "DenseLayer::forwardProp" << std::endl;
 }
+
+struct Dense1dBack{
+	float *_inGrad;
+	float *_dotProducts;
+	float *_prevAct;
+	float *_weights;
+	float _delta;
+	int _prevLayerSize;
+
+	Dense1dBack(float *ig, float *dp, float *pa, float *w, float d, int pls)
+		:_inGrad(ig), _dotProducts(dp), _prevAct(pa), _weights(w), _delta(d), _prevLayerSize(pls)
+	{}
+	__host__ __device__ thrust::tuple<float, float> operator()(size_t widx)
+	{
+		// actGrad = gradRelu(inGrad, dotProduct)
+		// outGrad = weight*actGrad = weight*gradRelu(inGrad, dotProduct)
+		// weightGrad = prevAct*actGrad = prevAct*gradRelu(inGrad, dotProduct) 
+		// tdUpdate = weightGrad*delta
+
+		int aidx = widx/_prevLayerSize;
+
+		// actGrad is the gradient of relu activation.
+		float actGrad = (_dotProducts[aidx] >= 0)? _inGrad[aidx] : 0;
+		float outGrad = _weights[widx]*actGrad;
+		float tdUpdate = _prevAct[widx]*actGrad*_delta;
+
+		return thrust::make_tuple(outGrad, tdUpdate);
+	}
+};
+
 
 void DenseLayer::backProp(unsigned expNum, const std::vector<double> &action, double delta)
 {
-	std::cout << "DenseLayer::backProp" << std::endl;
+	//std::cout << "DenseLayer::backProp" << std::endl;
+
+	std::vector<float> grad((*_vertices).size());
+	for(int i=0; i<grad.size(); ++i)
+	{
+		std::vector<Edge*> outputEdges = (*_vertices)[i]->outputEdges();
+		float inGrad = 0;
+		for(int j=0; j<outputEdges.size(); ++j)
+			inGrad += outputEdges[j]->outGrad();
+		
+		// In case layer is not output.
+		if(outputEdges.size() > 0)
+			grad[i] = inGrad;
+	}
+
+	thrust::device_vector<float> inGrads(grad.begin(), grad.end());
+	thrust::device_vector<float> dotProducts(_dotProducts.begin(), _dotProducts.end());
+	//thrust::device_vector<float> actGrad(_activations.size());
 
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> prevAct(act.begin(), act.end());
 	thrust::device_vector<float> weights(_weights.begin(), _weights.end());
-	thrust::device_vector<float> actGrad(_activations.size());
-	thrust::device_vector<float> tdUpdates(_weights.size());
-	thrust::device_vector<float> prevActGrad(act.size());
+
+	thrust::device_vector<float> outGrads(_outGrads.size());
+	thrust::device_vector<float> tdUpdates(_TDUpdates.size());
+
+	// This works here because outGrads and tdUpdates are of same size.
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(_weights.size()), 
+		thrust::make_zip_iterator(thrust::make_tuple(outGrads.begin(), tdUpdates.begin())), 
+		Dense1dBack(thrust::raw_pointer_cast(inGrads.data()), thrust::raw_pointer_cast(dotProducts.data()), 
+			thrust::raw_pointer_cast(prevAct.data()), thrust::raw_pointer_cast(weights.data()), delta, prevAct.size()));
+	cudaDeviceSynchronize();
+
+	thrust::copy(outGrads.begin(), outGrads.end(), _outGrads.begin());
+	thrust::copy(tdUpdates.begin(), tdUpdates.end(), _TDUpdates.begin());	
+
+	// prevInGrad = sum over respective outGrad elements. I think this should be done at beginning of backProp for current layer.
+	//thrust::device_vector<float> prevInGrad(prevAct.size());
 }
 
 void DenseLayer::cacheWeights()
 {
-	std::cout << "DenseLayer::cacheWeights" << std::endl;
+	//std::cout << "DenseLayer::cacheWeights" << std::endl;
 
 	_cachedWeights = _weights;
 }

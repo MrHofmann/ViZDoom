@@ -59,6 +59,7 @@ private:
 	std::vector<float> _cachedWeights;
 	std::vector<float> _dotProducts;
 	std::vector<float> _TDUpdates;
+	std::vector<float> _outGrads;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
 public:
@@ -86,6 +87,7 @@ private:
 	unsigned _poolDim;
 	unsigned _poolStride;
 
+	std::vector<float> _outGrads;
 	Tensor3d<Pool3dVertex*> *_vertices;
 
 public:
@@ -108,6 +110,7 @@ private:
 	std::vector<float> _cachedWeights;
 	std::vector<float> _dotProducts;
 	std::vector<float> _TDUpdates;
+	std::vector<float> _outGrads;
 	Tensor1d<Dense1dVertex*> *_vertices;
 
 public:
