@@ -11,11 +11,12 @@ protected:
 	ActivationType _activationType;
 	std::vector<unsigned> _layerSize;
 	NetworkLayer *_prevLayer;
+	NetworkLayer *_nextLayer;
 	std::vector<float> _activations;
 	BiasVertex *_bias;
 		
 public:
-	enum LayerType {INPUT, CONV, MAX_POOL, FC};
+	enum LayerType {INPUT, CONV, MAX_POOL, FC, OUTPUT};
 	enum PropagationType {PREDICTION, TARGET};
 
 	NetworkLayer(){}
@@ -24,12 +25,14 @@ public:
 	virtual LayerType layerType() const = 0;
 	virtual void forwardProp(PropagationType p) = 0;
 	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta) = 0;
+	virtual std::vector<float> getInGrads() const = 0;
 	//virtual void forwardPropTarget() = 0;
 	std::string layerName() const;
 	ActivationType activationType() const;
 	std::vector<unsigned> layerSize() const;
 	BiasVertex *biasVertex() const;
 	std::vector<float> activations() const;
+	void setNextLayer(NetworkLayer *nl);
 };
 
 class InputLayer : public NetworkLayer{
@@ -43,6 +46,7 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 
 	Tensor3d<Input3dVertex*>* vertices() const;
@@ -68,6 +72,7 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 	void cacheWeights();
 	//thrust::device_ptr<float> weightsToDevice() const;
@@ -78,6 +83,7 @@ public:
 	unsigned filterStride() const;	
 	std::vector<float> weights() const;
 	std::vector<float> dotProducts() const;
+	std::vector<float> outGrads() const;
 	Tensor3d<Conv3dVertex*>* vertices() const;
 	void setWeights(const std::vector<float> &w);
 };
@@ -96,9 +102,11 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 
 	unsigned poolDim() const;
+	std::vector<float> outGrads() const;
 	Tensor3d<Pool3dVertex*> *vertices() const;
 };
 
@@ -119,14 +127,47 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 	void cacheWeights();
 
 	unsigned numHiddenUnits() const;
 	std::vector<float> weights() const;
 	std::vector<float> dotProducts() const;
+	std::vector<float> outGrads() const;
 	Tensor1d<Dense1dVertex*> *vertices() const;
 	void setWeights(const std::vector<float> &w);
 };
+
+class OutputLayer : public NetworkLayer{
+private:
+	unsigned _numHiddenUnits;
+
+	std::vector<float> _weights;
+	std::vector<float> _cachedWeights;
+	std::vector<float> _dotProducts;
+	std::vector<float> _TDUpdates;
+	std::vector<float> _outGrads;
+	Tensor1d<Dense1dVertex*> *_vertices;
+
+public:
+	OutputLayer(){}
+	OutputLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
+	virtual LayerType layerType() const;
+	virtual void forwardProp(PropagationType p);
+	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual std::vector<float> getInGrads() const;
+	//virtual void forwardPropTarget();
+	std::vector<float> actionToGrads(const std::vector<double> &action) const;
+	void cacheWeights();
+
+	unsigned numHiddenUnits() const;
+	std::vector<float> weights() const;
+	std::vector<float> dotProducts() const;
+	std::vector<float> outGrads() const;
+	Tensor1d<Dense1dVertex*> *vertices() const;
+	void setWeights(const std::vector<float> &w);
+};
+
 
 #endif // NETWORKLAYER_H

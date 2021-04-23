@@ -30,6 +30,7 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 		layer = new Conv3dLayer(layerName, activation, layerSize, prevLayer, filterDim, prevLayerSize[2], filterStride);
 		_layers.push_back(layer);
 
+		prevLayer->setNextLayer(layer);
 		prevLayer = layer;
 		prevLayerSize = layerSize;
 		_layerSizes[layerName] = prevLayerSize;
@@ -47,6 +48,7 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 			layer = new Pool3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, poolDim, poolStride);
 			_layers.push_back(layer);
 		
+			prevLayer->setNextLayer(layer);
 			prevLayer = layer;
 			prevLayerSize = {layerHeight, layerWidth, layerDepth};
 			_layerSizes[layerName] = prevLayerSize;
@@ -64,19 +66,21 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 		_layers.push_back(layer);
 		_layerSizes[layerName] = {conf.numHiddenUnits[i]};
   	
+		prevLayer->setNextLayer(layer);
 		prevLayer = layer;
 		prevFcSize = conf.numHiddenUnits[i];
 	}
 	
 	// Output layer	
-	std::string layerName = "fc_" + std::to_string(i);
+	std::string layerName = "output";
 	unsigned outputSize = 1 << conf.numActions;
 	unsigned numHiddenUnits = outputSize;
 
-	layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
+	layer = new OutputLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
 	_layers.push_back(layer);
 	_layerSizes[layerName] = {outputSize};
-	
+	prevLayer->setNextLayer(layer);
+
 //	this->init_kaiming();
 
 	std::string prevLayerName;

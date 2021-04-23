@@ -68,7 +68,7 @@ int main()
 	iter++;
 	((DenseLayer*)(*iter))->setWeights(dense2Weights);
 	iter++;
-	((DenseLayer*)(*iter))->setWeights(dense3Weights);		
+	((OutputLayer*)(*iter))->setWeights(dense3Weights);		
 	
 	std::vector<double> currentAction = agent.agentStep(0.0, screenBuf);
 		
@@ -111,8 +111,23 @@ int main()
 				std::cout << dotProducts[i] << " ";
 			std::cout << std::endl;
 
-		}
+		}	
+		else if((*it)->layerType() == NetworkLayer::OUTPUT)
+		{
+			std::cout << "OutputLayer" << std::endl;
+			
+			std::vector<float> weights = ((OutputLayer*)(*it))->weights();
+			for(int i=0; i<weights.size(); ++i)
+				std::cout << weights[i] << " ";
+			std::cout << std::endl;
 
+			std::vector<float> dotProducts = ((OutputLayer*)(*it))->dotProducts();
+			for(int i=0; i<dotProducts.size(); ++i)
+				std::cout << dotProducts[i] << " ";
+			std::cout << std::endl;
+
+		}
+	
 		std::vector<float> activations = (*it)->activations();
 		for(int i=0; i<activations.size(); ++i)
 			std::cout << activations[i] << " ";
