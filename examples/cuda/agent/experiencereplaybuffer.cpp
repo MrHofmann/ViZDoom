@@ -2,7 +2,7 @@
 #include <experimental/algorithm>
 
 ExperienceReplayBuffer::ExperienceReplayBuffer(unsigned size, unsigned minibatchSize, int seed)
-	:_minibatchSize(minibatchSize), _maxSize(size), _randGenerator(std::mt19937(seed))
+	:_maxSize(size), _minibatchSize(minibatchSize), _randGenerator(std::mt19937(seed))
 {
 	//std::cout << "ExperienceReplayBuffer::ExperienceReplayBuffer" << std::endl;
 

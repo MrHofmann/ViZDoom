@@ -111,7 +111,7 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 
 void ActionValueNetwork::initInput(vizdoom::BufferPtr s)
 {
-	std::cout << "ActionValueNetwork::initInput" << std::endl;
+	//std::cout << "ActionValueNetwork::initInput" << std::endl;
 	
 	InputLayer *inputLayer = (InputLayer*)*_layers.begin();
 	inputLayer->setState(s);
@@ -119,7 +119,7 @@ void ActionValueNetwork::initInput(vizdoom::BufferPtr s)
 
 void ActionValueNetwork::cacheWeights()
 {
-	std::cout << "ActionValueNetwork::cacheWeights" << std::endl;
+	//std::cout << "ActionValueNetwork::cacheWeights" << std::endl;
 
 	for(auto it=_layers.begin(); it!=_layers.end(); it++)
 	{
@@ -133,7 +133,7 @@ void ActionValueNetwork::cacheWeights()
 // state -> conv3d -> max_pool -> conv3d -> max_pool -> fully_connected -> fully_connected -> softmax
 std::vector<float> ActionValueNetwork::getActionValuePreds(vizdoom::BufferPtr s)
 {
-	std::cout << "ActionValueNetwork::getActionValuePreds" << std::endl;
+	//std::cout << "ActionValueNetwork::getActionValuePreds" << std::endl;
 	
 	// Init first layer.
 	initInput(s);
@@ -149,7 +149,7 @@ std::vector<float> ActionValueNetwork::getActionValuePreds(vizdoom::BufferPtr s)
 
 std::vector<float> ActionValueNetwork::getActionValueTargets(vizdoom::BufferPtr s)
 {
-	std::cout << "ActionValueNetwork::getActionValueTargets" << std::endl;
+	//std::cout << "ActionValueNetwork::getActionValueTargets" << std::endl;
 
 	initInput(s);
 	for(auto it=_layers.begin(); it!=_layers.end(); it++)
@@ -161,7 +161,7 @@ std::vector<float> ActionValueNetwork::getActionValueTargets(vizdoom::BufferPtr 
 
 void ActionValueNetwork::getTDUpdate(unsigned expNum, const std::vector<double> &action, double delta)
 {
-	std::cout << "ActionValueNetwork::getTDUpdate" << std::endl;
+	//std::cout << "ActionValueNetwork::getTDUpdate" << std::endl;
 
 	std::vector<std::vector<float>> deltaMat;
 	NetworkLayer *output = _layers.back();

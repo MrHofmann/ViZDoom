@@ -175,6 +175,7 @@ struct OptimizerConfig{
 
 struct AgentConfig{
 	unsigned numActions;
+	unsigned replayBufferSize;
 	unsigned numReplay;
 	unsigned numMinibatch;
 	unsigned seed;

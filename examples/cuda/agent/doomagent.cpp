@@ -8,7 +8,7 @@ DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf,
 {
 	std::cout << "DoomAgent::DoomAgent" << std::endl;
 
-	_replayBuffer = ExperienceReplayBuffer(_numReplay, agentConf.numMinibatch, agentConf.seed);
+	_replayBuffer = ExperienceReplayBuffer(agentConf.replayBufferSize, agentConf.numMinibatch, agentConf.seed);
 	_network = ActionValueNetwork(netConf);
 	_optimizer = AdamOptimizer(netConf, optConf);
 	

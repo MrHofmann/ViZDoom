@@ -84,8 +84,19 @@ int main() {
     std::srand(time(0));
 			
     int episodes = 10;
-	AgentConfig agentConf = {8, 20, 10, 7, 1, 1};
-	NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};
+	// Lunar lander agentConf = {x, 50000, 4, 8, x, x, x}.
+	AgentConfig agentConf = {8, 1000, 1, 32, 7, 1, 1};
+	
+	// My old configuration.
+	//NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};			// 2GB RAM, 8sec per step.
+	
+	// Small configuration from ViZDoom paper experiment A and B.
+	//NetworkConfig netConf = {{60, 45, 3}, {32, 32}, {7, 4}, {1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {800}, 3}; 				// 8GB RAM, 45sec per step.
+	//NetworkConfig netConf = {{120, 45, 3}, {32, 32, 32}, {7, 5, 3}, {1, 1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {1024}, 4};	
+	
+	// My new configuration.
+	NetworkConfig netConf = {{60, 45, 3}, {32, 32}, {7, 4}, {1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {20}, 8};					// 3GB RAM, 15sec per step.
+	
 	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};
 	DoomAgent agent(agentConf, netConf, optConf);
 
