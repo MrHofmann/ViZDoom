@@ -9,7 +9,7 @@ DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf,
 	std::cout << "DoomAgent::DoomAgent" << std::endl;
 
 	_replayBuffer = ExperienceReplayBuffer(agentConf.replayBufferSize, agentConf.numMinibatch, agentConf.seed);
-	_network = ActionValueNetwork(netConf);
+	_network = ActionValueNetwork(agentConf, netConf);
 	_optimizer = AdamOptimizer(netConf, optConf);
 	
 	//self.rand_generator = np.random.RandomState(agent_config.get("seed"))
@@ -85,10 +85,17 @@ std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
 	//std::cout << "DoomAgent::policy" << std::endl;
 
-	std::vector<float> actionValues = _network.getActionValuePreds(state);	
-	std::vector<double> actionProbs	= softmax(actionValues);
+	//std::vector<float> actionValues = _network.getActionValuePreds(state);	
+	//std::vector<double> actionProbs	= softmax(actionValues);
 
-	return randomActionWithProb(actionProbs);
+	//return randomActionWithProb(actionProbs);
+		
+	std::mt19937 e(std::random_device{}()); 
+	std::bernoulli_distribution d;
+	std::vector<double> lastAction;
+	for(unsigned i=0; i<_numActions; ++i)
+		lastAction.push_back(d(e));
+	return lastAction;
 }
 
 std::vector<double> DoomAgent::agentStart(vizdoom::BufferPtr state)
@@ -132,38 +139,40 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 		{
 			std::vector<ExperienceSample> experiences = _replayBuffer.sample();
 		
-			//Clear TDUpdates structure here.
-
+			//Clear TDUpdates structure here. This is not required any longer since TDUpdates are stored 
+			//independently for each batch sample. Either this way or store TDUpdates in same location and implement mutex.
 			//optimizeNetwork(experiences, currentQ);
-			////std::vector<std::vector<float>> qNextMat;
-			////std::vector<std::vector<float>> qMat;
-			std::vector<double> deltaVec;
-			for(unsigned j=0; j<experiences.size(); ++j)
-			{
-				// Compute action value targets using Expected SARSA method.
-				//std::vector<float> qNextVec = currentQ.getActionValues(experiences[j].nextState);
-				std::vector<float> qNextVec = _network.getActionValueTargets(experiences[j].nextState);
-				////qNextMat.push_back(qNextVec);
-				std::vector<double> probsNextVec = softmax(qNextVec);
-				double vNext = 0;
-				for(unsigned k=0; k<qNextVec.size(); ++k)
-					vNext += probsNextVec[k]*qNextVec[k];
-				double target = experiences[j].reward + _discount*vNext;
 				
-				// Compute action value predictions and TD Error.
-				std::vector<float> qVec = _network.getActionValuePreds(experiences[j].state);
-				////qMat.push_back(qVec);
+			// Compute action value targets using Expected SARSA method.
+			std::vector<std::vector<float>> qNextMat = _network.getActionValueTargets(experiences);
+			std::vector<double> targetVec;
+			for(unsigned j=0; j<qNextMat.size(); ++j)
+			{
+				std::vector<double> probsNextVec = softmax(qNextMat[j]);
+				double vNext = 0;
+				if(experiences[j].terminal == false)
+					for(unsigned k=0; k<qNextMat[j].size(); ++k)
+						vNext += probsNextVec[k]*qNextMat[j][k];
+
+				double target = experiences[j].reward + _discount*vNext;
+				targetVec.push_back(target);
+			}
+
+			// Compute action value predictions and TD Error.
+			std::vector<std::vector<float>> qMat = _network.getActionValuePreds(experiences);
+			std::vector<double> deltaVec;
+			for(unsigned j=0; j<qMat.size(); ++j)
+			{
 				std::vector<double> eAction = experiences[j].action;
 				unsigned a = 0;
 				for(unsigned k=0; k<eAction.size(); ++k)
 					a += (1 << k)*eAction[eAction.size()-1 - k];
-				double delta = target - qVec[a];
+				double delta = targetVec[j] - qMat[j][a];
 				deltaVec.push_back(delta);
-
-				// Compute gradients and multiply with TD Error (delta).
-				// Also clear TDUpdates structures in layers before beginning of loop.
-				_network.getTDUpdate(j, eAction, delta);
 			}
+
+			// Compute gradients and multiply with TD Error (delta).
+			_network.getTDUpdate(experiences, deltaVec); // Maybe deltaMat is required.
 
 			// Update weights here using ADAM optimizer.
 		}

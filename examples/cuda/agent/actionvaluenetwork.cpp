@@ -1,13 +1,13 @@
 #include "actionvaluenetwork.h"
 
 
-ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
-	:_stateDim(conf.stateDim), _numActions(conf.numActions)
+ActionValueNetwork::ActionValueNetwork(const AgentConfig &agentConf, const NetworkConfig &conf)
+	:_stateDim(conf.stateDim), _batchSize(agentConf.numMinibatch), _numActions(conf.numActions)
 {
 	std::cout << "ActionValueNetwork::ActionValueNetwork" << std::endl;
 
 	NetworkLayer *prevLayer = nullptr;
-	std::vector<unsigned> prevLayerSize = {_stateDim[0], _stateDim[1], _stateDim[2]};
+	std::vector<unsigned> prevLayerSize = {_batchSize, _stateDim[0], _stateDim[1], _stateDim[2]};
 	NetworkLayer *layer = new InputLayer("input", RELU, prevLayerSize, prevLayer);
 	_layers.push_back(layer);
 	_layerSizes["input"] = prevLayerSize;
@@ -22,18 +22,17 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 		ActivationType activation = conf.activations[i];
 
 		// Add padding later.
-		unsigned layerHeight = (prevLayerSize[0] - conf.filterDim[i])/conf.filterStrides[i] + 1;
-		unsigned layerWidth = (prevLayerSize[1] - conf.filterDim[i])/conf.filterStrides[i] + 1;
+		unsigned layerHeight = (prevLayerSize[1] - conf.filterDim[i])/conf.filterStrides[i] + 1;
+		unsigned layerWidth = (prevLayerSize[2] - conf.filterDim[i])/conf.filterStrides[i] + 1;
 		unsigned layerDepth = conf.numFilters[i];
-		std::vector<unsigned> layerSize = {layerHeight, layerWidth, layerDepth};
-
-		layer = new Conv3dLayer(layerName, activation, layerSize, prevLayer, filterDim, prevLayerSize[2], filterStride);
+		std::vector<unsigned> layerSize = {_batchSize, layerHeight, layerWidth, layerDepth};
+		layer = new Conv3dLayer(layerName, activation, layerSize, prevLayer, filterDim, prevLayerSize[3], filterStride);
 		_layers.push_back(layer);
+		_layerSizes[layerName] = layerSize;
 
 		prevLayer->setNextLayer(layer);
 		prevLayer = layer;
 		prevLayerSize = layerSize;
-		_layerSizes[layerName] = prevLayerSize;
 		
 		if(conf.poolDim[i] > 0)
 		{
@@ -41,44 +40,41 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 			unsigned poolDim = conf.poolDim[i];
 			unsigned poolStride = conf.poolStrides[i];
 
-			layerHeight = (prevLayerSize[0] - poolDim)/poolStride + 1;
-			layerWidth = (prevLayerSize[1] - poolDim)/poolStride + 1;
-			layerDepth = prevLayerSize[2];
-			
-			layer = new Pool3dLayer(layerName, activation, std::vector<unsigned>({layerHeight, layerWidth, layerDepth}), prevLayer, poolDim, poolStride);
+			layerHeight = (prevLayerSize[1] - poolDim)/poolStride + 1;
+			layerWidth = (prevLayerSize[2] - poolDim)/poolStride + 1;
+			layerDepth = prevLayerSize[3];
+			layerSize = {_batchSize, layerHeight, layerWidth, layerDepth};
+			layer = new Pool3dLayer(layerName, activation, layerSize, prevLayer, poolDim, poolStride);
 			_layers.push_back(layer);
-		
+			_layerSizes[layerName] = layerSize;
+
 			prevLayer->setNextLayer(layer);
 			prevLayer = layer;
-			prevLayerSize = {layerHeight, layerWidth, layerDepth};
-			_layerSizes[layerName] = prevLayerSize;
+			prevLayerSize = layerSize;
 		}
 	}
 
-	int prevFcSize = prevLayerSize[0]*prevLayerSize[1]*prevLayerSize[2];
-	unsigned i;
-	for(i=0; i<conf.numHiddenUnits.size(); ++i)
+	for(unsigned i=0; i<conf.numHiddenUnits.size(); ++i)
 	{
 		std::string layerName = "fc_" + std::to_string(i);
-		unsigned numHiddenUnits = conf.numHiddenUnits[i];
 
-		layer = new DenseLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
+		std::vector<unsigned> layerSize = {_batchSize, conf.numHiddenUnits[i]};
+		layer = new DenseLayer(layerName, RELU, layerSize, prevLayer, conf.numHiddenUnits[i]);
 		_layers.push_back(layer);
-		_layerSizes[layerName] = {conf.numHiddenUnits[i]};
+		_layerSizes[layerName] = layerSize;
   	
 		prevLayer->setNextLayer(layer);
 		prevLayer = layer;
-		prevFcSize = conf.numHiddenUnits[i];
 	}
 	
 	// Output layer	
 	std::string layerName = "output";
-	unsigned outputSize = 1 << conf.numActions;
-	unsigned numHiddenUnits = outputSize;
 
-	layer = new OutputLayer(layerName, RELU, std::vector<unsigned>({numHiddenUnits}), prevLayer, numHiddenUnits);
+	unsigned outputSize = 1 << conf.numActions;
+	std::vector<unsigned> layerSize = {_batchSize, outputSize};
+	layer = new OutputLayer(layerName, RELU, layerSize, prevLayer, outputSize);
 	_layers.push_back(layer);
-	_layerSizes[layerName] = {outputSize};
+	_layerSizes[layerName] = layerSize;
 	prevLayer->setNextLayer(layer);
 
 //	this->init_kaiming();
@@ -99,7 +95,7 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 		{
 			std::vector<unsigned> prevLayerSize = _layerSizes[prevLayerName];
 			int s = 0;
-			for(unsigned i=0; i<prevLayerSize.size(); ++i)
+			for(unsigned i=1; i<prevLayerSize.size(); ++i)
 				s += prevLayerSize[i];
 			std::cerr << ((DenseLayer*)*it)->numHiddenUnits()*s;
 		}
@@ -109,12 +105,12 @@ ActionValueNetwork::ActionValueNetwork(const NetworkConfig &conf)
 	}
 }
 
-void ActionValueNetwork::initInput(vizdoom::BufferPtr s)
+void ActionValueNetwork::initInput(const std::vector<vizdoom::BufferPtr> &states)
 {
 	//std::cout << "ActionValueNetwork::initInput" << std::endl;
 	
 	InputLayer *inputLayer = (InputLayer*)*_layers.begin();
-	inputLayer->setState(s);
+	inputLayer->setState(states);
 }
 
 void ActionValueNetwork::cacheWeights()
@@ -131,42 +127,54 @@ void ActionValueNetwork::cacheWeights()
 }
 
 // state -> conv3d -> max_pool -> conv3d -> max_pool -> fully_connected -> fully_connected -> softmax
-std::vector<float> ActionValueNetwork::getActionValuePreds(vizdoom::BufferPtr s)
+std::vector<std::vector<float>> ActionValueNetwork::getActionValuePreds(const std::vector<ExperienceSample> &experiences)
 {
 	//std::cout << "ActionValueNetwork::getActionValuePreds" << std::endl;
-	
+
+	std::vector<vizdoom::BufferPtr> states;
+	for(unsigned i=0; i<experiences.size(); ++i)
+		states.push_back(experiences[i].state);
+
 	// Init first layer.
-	initInput(s);
+	initInput(states);
 	auto it =_layers.begin();
 	for(; it!=_layers.end(); it++)
 		// activation(prev_layer*W + b)
 		(*it)->forwardProp(NetworkLayer::PREDICTION);
 
 	std::vector<float> actionValues = _layers.back()->activations();
-	return std::vector<float>(actionValues.begin(), actionValues.end()-1);
+	return {std::vector<float>(actionValues.begin(), actionValues.end()-1)};
 }
 
 
-std::vector<float> ActionValueNetwork::getActionValueTargets(vizdoom::BufferPtr s)
+std::vector<std::vector<float>> ActionValueNetwork::getActionValueTargets(const std::vector<ExperienceSample> &experiences)
 {
 	//std::cout << "ActionValueNetwork::getActionValueTargets" << std::endl;
 
-	initInput(s);
+	std::vector<vizdoom::BufferPtr> nextStates;
+	for(unsigned i=0; i<experiences.size(); ++i)
+		nextStates.push_back(experiences[i].nextState);
+
+	initInput(nextStates);
 	for(auto it=_layers.begin(); it!=_layers.end(); it++)
 		(*it)->forwardProp(NetworkLayer::TARGET);
 
 	std::vector<float> actionValues = _layers.back()->activations();
-	return std::vector<float>(actionValues.begin(), actionValues.end()-1);
+	return {std::vector<float>(actionValues.begin(), actionValues.end()-1)};
 }
 
-void ActionValueNetwork::getTDUpdate(unsigned expNum, const std::vector<double> &action, double delta)
+void ActionValueNetwork::getTDUpdate(const std::vector<ExperienceSample> &experiences, const std::vector<double> &deltaVec)
 {
 	//std::cout << "ActionValueNetwork::getTDUpdate" << std::endl;
+	
+	std::vector<std::vector<double>> actions;
+	for(unsigned i=0; i<experiences.size(); ++i)
+		actions.push_back(experiences[i].action);
 
 	std::vector<std::vector<float>> deltaMat;
 	NetworkLayer *output = _layers.back();
 	for(auto it=_layers.rbegin(); it!=_layers.rend(); it++)
-		(*it)->backProp(expNum, action, delta);
+		(*it)->backProp(actions, deltaVec);
 }
 
 std::list<NetworkLayer*> ActionValueNetwork::getLayers() const

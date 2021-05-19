@@ -24,7 +24,7 @@ public:
 	virtual ~NetworkLayer(){std::cout << "Delete NetworkLayer: " << this->layerName() << std::endl;}
 	virtual LayerType layerType() const = 0;
 	virtual void forwardProp(PropagationType p) = 0;
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta) = 0;
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec) = 0;
 	virtual std::vector<float> getInGrads() const = 0;
 	//virtual void forwardPropTarget() = 0;
 	std::string layerName() const;
@@ -37,7 +37,7 @@ public:
 
 class InputLayer : public NetworkLayer{
 private:
-	vizdoom::BufferPtr _state;
+	std::vector<vizdoom::BufferPtr> _states;
 	Tensor3d<Input3dVertex*> *_vertices;
 
 public:
@@ -45,12 +45,12 @@ public:
 	InputLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
 	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 
 	Tensor3d<Input3dVertex*>* vertices() const;
-	void setState(vizdoom::BufferPtr s);
+	void setState(const std::vector<vizdoom::BufferPtr> &s);
 };
 
 class Conv3dLayer : public NetworkLayer{
@@ -71,7 +71,7 @@ public:
 	Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned fdi, unsigned fde, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
 	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 	void cacheWeights();
@@ -101,7 +101,7 @@ public:
 	Pool3dLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned pdi, unsigned fs);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
 	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 
@@ -126,7 +126,7 @@ public:
 	DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
 	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
 	void cacheWeights();
@@ -155,10 +155,10 @@ public:
 	OutputLayer(std::string ln, ActivationType at, std::vector<unsigned> ls, NetworkLayer *prevLayer, unsigned hu);
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
-	virtual void backProp(unsigned expNum, const std::vector<double> &action, double delta);
+	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
 	virtual std::vector<float> getInGrads() const;
 	//virtual void forwardPropTarget();
-	std::vector<float> actionToGrads(const std::vector<double> &action) const;
+	std::vector<float> actionsToGrads(const std::vector<std::vector<double>> &actions) const;
 	void cacheWeights();
 
 	unsigned numHiddenUnits() const;

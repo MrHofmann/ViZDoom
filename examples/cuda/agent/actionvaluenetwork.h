@@ -16,6 +16,7 @@ private:
 	//std::map<std::string, unsigned> pool_strides;       		// [Sp1, Sp2, ... , Spn]
 	//std::map<std::string, unsigned> num_hidden_units; 			// [H1, H2, ... , Hm]
 	std::map<std::string, std::vector<unsigned>> _layerSizes;
+	unsigned _batchSize;
 	unsigned _numActions;                     							// O
 
 	//self.rand_generator = np.random.RandomState(network_config.get("seed"))
@@ -23,14 +24,14 @@ private:
 
 public:
 	ActionValueNetwork(){}
-	ActionValueNetwork(const NetworkConfig &conf);
+	ActionValueNetwork(const AgentConfig &agentConf, const NetworkConfig &conf);
 	//void init_saxe(unsigned num_rows, unsigned num_cols);
 	//void init_kaiming();
-	void initInput(vizdoom::BufferPtr s);
+	void initInput(const std::vector<vizdoom::BufferPtr> &s);
 	void cacheWeights();
-	std::vector<float> getActionValuePreds(vizdoom::BufferPtr s);
-	std::vector<float> getActionValueTargets(vizdoom::BufferPtr s);
-	void getTDUpdate(unsigned expNum, const std::vector<double> &action, double delta);
+	std::vector<std::vector<float>> getActionValuePreds(const std::vector<ExperienceSample> &experiences);
+	std::vector<std::vector<float>> getActionValueTargets(const std::vector<ExperienceSample> &experiences);
+	void getTDUpdate(const std::vector<ExperienceSample> &experiences, const std::vector<double> &deltaVec);
 	
 	std::list<NetworkLayer*> getLayers() const;
 };
