@@ -2,11 +2,12 @@
 #include <algorithm>
 #include <limits>
 
+extern AgentDebug doomDebug;
 
 DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf, const OptimizerConfig &optConf)
 	:_numActions(agentConf.numActions), _numReplay(agentConf.numReplay), _discount(agentConf.discount), _tau(agentConf.tau)
 {
-	std::cout << "DoomAgent::DoomAgent" << std::endl;
+	auto start = doomDebug.start("DoomAgent::DoomAgent", 1);
 
 	_replayBuffer = ExperienceReplayBuffer(agentConf.replayBufferSize, agentConf.numMinibatch, agentConf.seed);
 	_network = ActionValueNetwork(agentConf, netConf);
@@ -18,17 +19,21 @@ DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf,
 	//self.last_action = None	
 	_sumRewards = 0;
 	_episodeSteps = 0;
+
+	doomDebug.end("DoomAgent::DoomAgent", 1, start);
 }
 
 void DoomAgent::optimizeNetwork(const std::vector<ExperienceSample> &exp, ActionValueNetwork q)
 {
-	std::cout << "DoomAgent::optimizeNetwork" << std::endl;
 
+	auto start = doomDebug.start("DoomAgent::optimizeNetwork", 2);
+	
+	doomDebug.end("DoomAgent::optimizeNetwork", 2, start);
 }
 
 std::vector<double> DoomAgent::softmax(const std::vector<float> &actionValues) const
 {
-	//std::cout << "DoomAgent::softmax" << std::endl;
+	auto start = doomDebug.start("DoomAgent::softmax", 3);
 
 	// Compute the preferences by dividing the action-values by the temperature parameter tau
 	std::vector<double> preferences;
@@ -54,13 +59,14 @@ std::vector<double> DoomAgent::softmax(const std::vector<float> &actionValues) c
 	for(unsigned i=0; i<expPreferences.size(); ++i)
 		actionProbs.push_back(expPreferences[i]/sumOfExpPreferences);
 
+	doomDebug.end("DoomAgent::softmax", 3, start);
 	return actionProbs;
 }
 
 std::vector<double> DoomAgent::randomActionWithProb(const std::vector<double> &probs) const
 {
-	//std::cout << "DoomAgent::randomActionWithProb" << std::endl;
-
+	auto start = doomDebug.start("DoomAgent::randomActionWithProb", 3);
+	
 	double val = (double)std::rand() / RAND_MAX;
 
 	double p = 0;
@@ -77,50 +83,47 @@ std::vector<double> DoomAgent::randomActionWithProb(const std::vector<double> &p
 	for(unsigned j=0; j<action.size(); ++j)
 		action[action.size()-1-j] = (i >> j) & 1;
 
+	doomDebug.end("DoomAgent::randomActionWithProb", 3, start);
 	return action;
 }
 
 // This is a softmax policy
 std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
-	//std::cout << "DoomAgent::policy" << std::endl;
+	auto start = doomDebug.start("DoomAgent::policy", 3);
 
-	//std::vector<float> actionValues = _network.getActionValuePreds(state);	
-	//std::vector<double> actionProbs	= softmax(actionValues);
-
-	//return randomActionWithProb(actionProbs);
+	std::vector<float> actionValues = _network.getActionValueSingle(state);	
+	std::vector<double> actionProbs = softmax(actionValues);
 		
-	std::mt19937 e(std::random_device{}()); 
-	std::bernoulli_distribution d;
-	std::vector<double> lastAction;
-	for(unsigned i=0; i<_numActions; ++i)
-		lastAction.push_back(d(e));
-	return lastAction;
-}
-
-std::vector<double> DoomAgent::agentStart(vizdoom::BufferPtr state)
-{
-	std::cout << "DoomAgent::agentStart" << std::endl;
-
-	_sumRewards = 0;
-	_episodeSteps = 0;
-	
 	//std::mt19937 e(std::random_device{}()); 
 	//std::bernoulli_distribution d;
 	//std::vector<double> lastAction;
 	//for(unsigned i=0; i<_numActions; ++i)
 	//	lastAction.push_back(d(e));
+	//return lastAction;
 
+	doomDebug.end("DoomAgent::policy", 3, start);
+	return randomActionWithProb(actionProbs);
+}
+
+std::vector<double> DoomAgent::agentStart(vizdoom::BufferPtr state)
+{
+	auto start = doomDebug.start("DoomAgent::agentStart", 1);
+	
+	_sumRewards = 0;
+	_episodeSteps = 0;
+	
 	_lastState = state;
 	_lastAction = policy(_lastState); 
 
+	doomDebug.end("DoomAgent::agentStart", 1, start);
 	return _lastAction;
 }
 
 std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state)
 {
-	std::cout << "DoomAgent::agentStep" << std::endl;
-	
+	auto time = doomDebug.start("DoomAgent::agentStep", 1);
+
 	_sumRewards += reward;
 	_episodeSteps += 1;
 	
@@ -181,6 +184,7 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 	_lastState = state;
 	_lastAction = action;
 
+	doomDebug.end("DoomAgent::agentStep", 1, time);
 	return action;
 
 	// std::mt19937 e(std::random_device{}()); 
@@ -195,7 +199,7 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 
 void DoomAgent::agentEnd(double reward)
 {
-	std::cout << "DoomAgent::agentEnd" << std::endl;
+	auto time = doomDebug.start("DoomAgent::agentEnd", 1);
 		
 	_sumRewards += reward;
 	_episodeSteps += 1;
@@ -218,6 +222,7 @@ void DoomAgent::agentEnd(double reward)
 	//_lastState = state;
 	//_lastAction = action;
 
+	doomDebug.end("DoomAgent::agentEnd", 1, time);
 	//return action
 }
 
@@ -233,5 +238,8 @@ double DoomAgent::agentMessage(std::string message) const
 
 ActionValueNetwork *DoomAgent::getNetwork()
 {
+	auto time = doomDebug.start("DoomAgent::getNetwork", 3);
+	
+	doomDebug.end("DoomAgent::getNetwork", 3, time);
 	return &_network;
 }

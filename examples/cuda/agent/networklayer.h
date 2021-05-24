@@ -17,7 +17,7 @@ protected:
 		
 public:
 	enum LayerType {INPUT, CONV, MAX_POOL, FC, OUTPUT};
-	enum PropagationType {PREDICTION, TARGET};
+	enum PropagationType {SINGLE, PREDICTION, TARGET};
 
 	NetworkLayer(){}
 	NetworkLayer(std::string n, ActivationType a, const std::vector<unsigned> &s, NetworkLayer *pl);
@@ -25,8 +25,6 @@ public:
 	virtual LayerType layerType() const = 0;
 	virtual void forwardProp(PropagationType p) = 0;
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec) = 0;
-	virtual std::vector<float> getInGrads() const = 0;
-	//virtual void forwardPropTarget() = 0;
 	std::string layerName() const;
 	ActivationType activationType() const;
 	std::vector<unsigned> layerSize() const;
@@ -46,8 +44,6 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
-	virtual std::vector<float> getInGrads() const;
-	//virtual void forwardPropTarget();
 
 	Tensor3d<Input3dVertex*>* vertices() const;
 	void setState(const std::vector<vizdoom::BufferPtr> &s);
@@ -72,11 +68,8 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
-	virtual std::vector<float> getInGrads() const;
-	//virtual void forwardPropTarget();
 	void cacheWeights();
-	//thrust::device_ptr<float> weightsToDevice() const;
-	//thrust::device_ptr<float> activationsToDevice() const;
+
 
 	unsigned filterDim() const;
 	unsigned filterDepth() const;
@@ -102,8 +95,6 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
-	virtual std::vector<float> getInGrads() const;
-	//virtual void forwardPropTarget();
 
 	unsigned poolDim() const;
 	std::vector<float> outGrads() const;
@@ -127,8 +118,6 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
-	virtual std::vector<float> getInGrads() const;
-	//virtual void forwardPropTarget();
 	void cacheWeights();
 
 	unsigned numHiddenUnits() const;
@@ -156,8 +145,6 @@ public:
 	virtual LayerType layerType() const;
 	virtual void forwardProp(PropagationType p);
 	virtual void backProp(const std::vector<std::vector<double>> &actions, const std::vector<double> &deltaVec);
-	virtual std::vector<float> getInGrads() const;
-	//virtual void forwardPropTarget();
 	std::vector<float> actionsToGrads(const std::vector<std::vector<double>> &actions) const;
 	void cacheWeights();
 

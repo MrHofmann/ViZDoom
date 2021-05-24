@@ -15,6 +15,7 @@ void sleep(unsigned int time){
 
 using namespace vizdoom;
 
+AgentDebug doomDebug(2);
 
 int main() {  
 	
@@ -85,7 +86,7 @@ int main() {
 			
     int episodes = 10;
 	// Lunar lander agentConf = {x, 50000, 4, 8, x, x, x}.
-	AgentConfig agentConf = {8, 1000, 1, 16, 7, 1, 1};
+	AgentConfig agentConf = {8, 1000, 1, 1, 7, 1, 1};
 	
 	// My old configuration.
 	NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};				// 2GB RAM, 8sec per step.
@@ -109,7 +110,7 @@ int main() {
         game->newEpisode();
 		agent.agentStart(game->getState()->screenBuffer);
         while (!game->isEpisodeFinished()) {
-			auto start = std::chrono::high_resolution_clock::now(); 
+			//auto start = std::chrono::high_resolution_clock::now(); 
             GameStatePtr state = game->getState(); //is std::shared_ptr<GameState>
             unsigned int n              = state->number;
             std::vector<double> vars    = state->gameVariables; 
@@ -147,9 +148,9 @@ int main() {
             //std::cout << "Action reward: " << reward << "\n";
             //std::cout << "=====================\n";
 
-			auto stop = std::chrono::high_resolution_clock::now();
-			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-			std::cout << duration.count() << std::endl; 
+			//auto stop = std::chrono::high_resolution_clock::now();
+			//auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+			//std::cout << duration.count() << std::endl; 
 						
             if(sleepTime) sleep(sleepTime);
         }

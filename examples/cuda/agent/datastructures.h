@@ -7,7 +7,7 @@
 #include <vector>
 #include <string>
 #include <map>
-
+#include <chrono>
 
 enum ActivationType {RELU, LRELU, TANH, SIGMOID};
 
@@ -189,6 +189,39 @@ struct ExperienceSample{
 	double reward;
 	bool terminal;
 	vizdoom::BufferPtr nextState;
+};
+
+struct AgentDebug{
+	unsigned debugLevel;
+	
+	AgentDebug(unsigned dl)
+		: debugLevel(dl)
+	{}
+
+	//static
+	std::chrono::time_point<std::chrono::high_resolution_clock>
+	start(std::string message, unsigned currentLevel)
+	{
+		if(debugLevel >= currentLevel)
+		{			
+			for(unsigned i=0; i<currentLevel-1; ++i)
+				std::cout << "\t";
+			std::cout << message << std::endl;
+		}
+		return std::chrono::high_resolution_clock::now();
+	}
+
+	void end(std::string message, unsigned currentLevel, std::chrono::time_point<std::chrono::high_resolution_clock> startTime)
+	{
+		if(debugLevel >= currentLevel)
+		{
+			auto stopTime = std::chrono::high_resolution_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stopTime - startTime);
+			for(unsigned i=0; i<currentLevel-1; ++i)
+				std::cout << "\t";
+			std::cout << message << " " << duration.count() << std::endl;
+		}
+	}
 };
 
 #endif // DATASTRUCTURES_H
