@@ -88,7 +88,9 @@ NetworkLayer::LayerType InputLayer::layerType() const
 void InputLayer::forwardProp(PropagationType p)
 {
 	auto start = doomDebug.start("InputLayer::forwardProp", 3);
-
+	
+	// Some exapmles show that input, output and pool layer have neither non-linear activations or batch normalization:
+	// https://gluon.mxnet.io/chapter04_convolutional-neural-networks/cnn-batch-norm-scratch.html
 	unsigned batch = _states.size();
 	unsigned height = _layerSize[1];
 	unsigned width = _layerSize[2];
@@ -166,10 +168,21 @@ Conv3dLayer::Conv3dLayer(std::string ln, ActivationType at, std::vector<unsigned
 	// Total number of weights is 3d-filter size times number of filters plus one bias for each filter. That is for each filter (depth dimension) there are
 	// (filterTotalSize + 1) weights. (filterTotalSize + 1)*_layerSize[3]
 	_weights = std::vector<float>(filterTotalSize*_layerSize[3] + _layerSize[3]);
+	_gamma = std::vector<float>(_layerSize[3]);
+	_beta = std::vector<float>(_layerSize[3]);
 	_cachedWeights = std::vector<float>(filterTotalSize*_layerSize[3] + _layerSize[3]);
+	_cachedGamma = std::vector<float>(_layerSize[3]);
+	_cachedBeta = std::vector<float>(_layerSize[3]);
+	_means = std::vector<float>(_layerSize[3]);
+	_vars = std::vector<float>(_layerSize[3]);
+	_movingMeans = std::vector<float>(_layerSize[3], 0);
+	_movingVars = std::vector<float>(_layerSize[3], 1);
 	_TDUpdates = std::vector<float>(_layerSize[0]*(filterTotalSize*_layerSize[3] + _layerSize[3]));
+	_TDGamma = std::vector<float>(_layerSize[3]);
+	_TDBeta = std::vector<float>(_layerSize[3]);
 	_outGrads = std::vector<float>(_layerSize[0]*(filterTotalSize + 1)*layerTotalSize);										// Not sure if outGrad of bias is required. Check later.
-	_dotProducts = std::vector<float>(_layerSize[0]*layerTotalSize);	
+	_dotProducts = std::vector<float>(_layerSize[0]*layerTotalSize);
+	_normed = std::vector<float>(_layerSize[0]*layerTotalSize);
 	_activations = std::vector<float>(_layerSize[0]*layerTotalSize);
 	_vertices = nullptr;
 	_bias = nullptr;
@@ -214,7 +227,7 @@ NetworkLayer::LayerType Conv3dLayer::layerType() const
 	return NetworkLayer::CONV;
 }
 
-struct Conv3dTransform{
+struct Conv3dDotProducts{
 	float *_input;
 	float *_weights;
 	int _filterDim;
@@ -226,14 +239,14 @@ struct Conv3dTransform{
 	int _layerWidth;
 	int _layerDepth;
 
-	Conv3dTransform(float *i, float *w, int fdi, int fde, int ih, int iw, int id, int lh, int lw, int ld)
+	Conv3dDotProducts(float *i, float *w, int fdi, int fde, int ih, int iw, int id, int lh, int lw, int ld)
 		:_input(i), _weights(w), _filterDim(fdi), _filterDepth(fde), 
 		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
 		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld)
 	{
 			
 	}
-	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
+	__host__ __device__ float operator()(size_t vidx)
 	{
 		// vidx = b*outputHeight*outputWidth*outputDepth + i*outputWidth*outputDepth + j*outputDepth + k
 		int b = vidx/(_layerHeight*_layerWidth*_layerDepth);
@@ -248,7 +261,6 @@ struct Conv3dTransform{
 		// first input channel. Thats why there is no + k at the end of right hand side of the expression bellow.
 		int iidx = b*_inputHeight*_inputWidth*_inputDepth + i*_inputWidth*_inputDepth + j*_inputDepth;
 		float dotProduct = 0.0f;
-		float activation;
 		for(unsigned h=0; h<_filterDim; ++h)
 			for(unsigned w=0; w<_filterDim; ++w)
 				for(unsigned d=0; d<_filterDepth; ++d)
@@ -260,9 +272,87 @@ struct Conv3dTransform{
 				}
 
 		dotProduct += _weights[widx + _filterDim*_filterDim*_filterDepth];
+		return dotProduct;
+	}
+};
+
+struct Conv3dStatistics{
+	float *_dotProducts;
+	int _batchSize;
+	int _layerHeight;
+	int _layerWidth;
+	int _layerDepth;
+
+	Conv3dStatistics(float *dp, int bs, int lh, int lw, int ld)
+		:_dotProducts(dp), _batchSize(bs), _layerHeight(lh), _layerWidth(lw), _layerDepth(ld)
+	{}
+
+	__host__ __device__ thrust::tuple<float, float> operator () (size_t cidx)
+	{		
+		float mean = 0;
+		for(unsigned b=0; b<_batchSize; ++b)
+		{
+			int vidx = b*_layerHeight*_layerWidth*_layerDepth + cidx;
+			for(unsigned h=0; h<_layerHeight; ++h)
+			{
+				int vix = vidx + h*_layerWidth*_layerDepth;
+				for(unsigned w=0; w<_layerWidth; ++w)
+				{
+					int vx = vix + w*_layerDepth;
+					mean += _dotProducts[vx];
+				}
+			}
+		}
+		mean /= _batchSize*_layerHeight*_layerWidth;
+		
+		float var = 0;
+		for(unsigned b=0; b<_batchSize; ++b)
+		{
+			int vidx = b*_layerHeight*_layerWidth*_layerDepth + cidx;
+			for(unsigned h=0; h<_layerHeight; ++h)
+			{
+				int vix = vidx + h*_layerWidth*_layerDepth;
+				for(unsigned w=0; w<_layerWidth; ++w)
+				{
+					int vx = vix + w*_layerDepth;
+					var += (_dotProducts[vx] - mean)*(_dotProducts[vx] - mean);
+				}
+			}
+		}
+		var /= _batchSize*_layerHeight*_layerWidth;
+ 
+		return thrust::make_tuple(mean, var);
+	}
+};
+
+struct Conv3dActivations{
+	float *_dotProducts;
+	float *_means;
+	float *_vars;
+	float *_gamma;
+	float *_beta;
+	int _layerHeight;
+	int _layerWidth;
+	int _layerDepth;
+
+	Conv3dActivations(float *dp, float *m, float *v, float *g, float *b, int lh, int lw, int ld)
+		:_dotProducts(dp), _means(m), _vars(v), _gamma(g), _beta(b),  
+		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld)
+	{}
+
+	__host__ __device__ thrust::tuple<float, float> operator () (size_t vidx)
+	{	
+		int b = vidx/(_layerHeight*_layerWidth*_layerDepth);
+		int ijk = vidx - b*_layerHeight*_layerWidth*_layerDepth;
+		int i = ijk/(_layerWidth*_layerDepth);
+		int jk = ijk - i*_layerWidth*_layerDepth;
+		int j = jk/_layerDepth;
+		int k = jk - j*_layerDepth;
+
 		// Batch normalization goes here.
-		activation = (dotProduct > 0)? dotProduct : 0;
-		return thrust::make_tuple(dotProduct, activation);
+		float normed = _gamma[k]*(_dotProducts[vidx] - _means[k])/std::sqrt(_vars[k] + 0.000001f) + _beta[k];
+		float activation = (normed > 0)? normed : 0;
+		return thrust::make_tuple(normed, activation);
 	}
 };
 
@@ -287,23 +377,64 @@ void Conv3dLayer::forwardProp(PropagationType p)
 
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.begin() + inputSize);
-	thrust::device_vector<float> weights(_weights.size());	
+	thrust::device_vector<float> weights(_weights.size());
+	thrust::device_vector<float> gamma(_gamma.size());
+	thrust::device_vector<float> beta(_beta.size());
 	thrust::device_vector<float> dotProducts(layerSize);
+	thrust::device_vector<float> normed(layerSize);
 	thrust::device_vector<float> activations(layerSize);
 	if(p == TARGET)
+	{
 		thrust::copy(_cachedWeights.begin(), _cachedWeights.end(), weights.begin());
+		thrust::copy(_cachedGamma.begin(), _cachedGamma.end(), gamma.begin());
+		thrust::copy(_cachedBeta.begin(), _cachedBeta.end(), beta.begin());
+	}
 	else
+	{
 		thrust::copy(_weights.begin(), _weights.end(), weights.begin());
+		thrust::copy(_gamma.begin(), _gamma.end(), gamma.begin());
+		thrust::copy(_beta.begin(), _beta.end(), beta.begin());
+	}
 
-	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
-		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
-		Conv3dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), dotProducts.begin(), 
+		Conv3dDotProducts(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
 			_filterDim, _filterDepth, inputHeight, inputWidth, inputDepth, _layerSize[1], _layerSize[2], _layerSize[3]));
 	cudaDeviceSynchronize();
+
+	if(p != SINGLE)
+	{
+		thrust::device_vector<float> means(_layerSize[3]);
+		thrust::device_vector<float> vars(_layerSize[3]);
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(means.size()),
+			thrust::make_zip_iterator(thrust::make_tuple(means.begin(), vars.begin())),
+			Conv3dStatistics(thrust::raw_pointer_cast(dotProducts.data()), _layerSize[0], _layerSize[1], _layerSize[2], _layerSize[3]));
+		cudaDeviceSynchronize();
+
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize),
+			thrust::make_zip_iterator(thrust::make_tuple(normed.begin(), activations.begin())),
+			Conv3dActivations(thrust::raw_pointer_cast(dotProducts.data()), thrust::raw_pointer_cast(means.data()), thrust::raw_pointer_cast(vars.data()),
+				thrust::raw_pointer_cast(gamma.data()), thrust::raw_pointer_cast(beta.data()), _layerSize[1], _layerSize[2], _layerSize[3]));
+		cudaDeviceSynchronize();
+
+		thrust::copy(means.begin(), means.end(), _means.begin());
+		thrust::copy(vars.begin(), vars.end(), _vars.begin());
+		updateStatistics(0.9);
+	}
+	else
+	{
+		thrust::device_vector<float> movingMeans(_movingMeans);
+		thrust::device_vector<float> movingVars(_movingVars);
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize),
+			thrust::make_zip_iterator(thrust::make_tuple(normed.begin(), activations.begin())),
+			Conv3dActivations(thrust::raw_pointer_cast(dotProducts.data()), thrust::raw_pointer_cast(movingMeans.data()), thrust::raw_pointer_cast(movingVars.data()),
+				thrust::raw_pointer_cast(gamma.data()), thrust::raw_pointer_cast(beta.data()), _layerSize[1], _layerSize[2], _layerSize[3]));
+		cudaDeviceSynchronize();
+	}
 
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
 	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
+	thrust::copy(normed.begin(), normed.end(), _normed.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
 	doomDebug.end("Conv3dLayer::forwardProp", 3, start);
@@ -411,6 +542,17 @@ struct Conv3dBack{
 				//int vidx = vi*_layerWidth*_layerDepth + vj*_layerDepth + c;
 				int vidx = bidx*_layerHeight*_layerWidth*_layerDepth +  vi*_layerWidth*_layerDepth + vj*_layerDepth + c;
 				float actGrad = (_dotProducts[vidx] >= 0)? _inGrads[vidx] : 0;
+
+				//----------------------------------------------------------------------------------------------------------------------------------
+				// dAct == actGrad, _gamma[c], _dotProducts[vidx], _means[c], _vars[c], _batchSize, _normed[vidx], _xHat[vidx], p1Sum
+				//float dAct = (_normed[vidx] >= 0)? _inGrads[vidx] : 0;
+				//float p1i = _dotProducts[vidx] - _means[c];
+				//float p2 = _vars[c] + _epsilon;
+				//float dx = ((_batchSize - 1)/(_batchSize*std::sqrt(p2)) + (p1Sum/_batchSize - p1i)*p1i/(_batchSize*p2*std::sqrt(p2)))*_gamma[c]*dAct;
+				//float dGamma = _xHat[vidx]*dAct;
+				//float dBeta = dAct;
+				//-----------------------------------------------------------------------------------------------------------------------------------
+				
 				int gidx = vidx*weightsTotalSize + r;
 				_outGrads[gidx] = _weights[widx]*actGrad;
 
@@ -470,9 +612,26 @@ void Conv3dLayer::backProp(const std::vector<std::vector<double>> &actions, cons
 
 void Conv3dLayer::cacheWeights()
 {
-	//std::cout << "Conv3dLayer::cacheWeights" << std::endl;
+	auto start = doomDebug.start("Conv3dLayer::cacheWeights", 4);
 
 	_cachedWeights = _weights;
+	_cachedGamma = _gamma;
+	_cachedBeta = _beta;
+
+	doomDebug.end("Conv3dLayer::cacheWeights", 4, start);
+}
+
+void Conv3dLayer::updateStatistics(double momentum)
+{
+	auto start = doomDebug.start("Conv3dLayer::updateStatistics", 4);
+
+	for(unsigned i=0; i<_movingMeans.size(); ++i)
+	{
+		_movingMeans[i] = _movingMeans[i]*momentum + _means[i]*(1.0f - momentum);
+		_movingVars[i] = _movingVars[i]*momentum + _vars[i]*(1.0f - momentum);
+	}
+
+	doomDebug.end("Conv3dLayer::updateStatistics", 4, start);
 }
 
 unsigned Conv3dLayer::filterDim() const
@@ -581,7 +740,7 @@ NetworkLayer::LayerType Pool3dLayer::layerType() const
 	return NetworkLayer::MAX_POOL;
 }
 
-struct Pool3dTransform{
+struct Pool3dPool{
 	float *_input;
 	int _poolDim;
 	int _inputHeight;
@@ -591,7 +750,7 @@ struct Pool3dTransform{
 	int _layerWidth;
 	int _layerDepth;
 
-	Pool3dTransform(float *i, int pdi, int ih, int iw, int id, int lh, int lw, int ld)
+	Pool3dPool(float *i, int pdi, int ih, int iw, int id, int lh, int lw, int ld)
 		:_input(i), _poolDim(pdi), 
 		_inputHeight(ih), _inputWidth(iw), _inputDepth(id), 
 		_layerHeight(lh), _layerWidth(lw), _layerDepth(ld){}
@@ -617,8 +776,6 @@ struct Pool3dTransform{
 					activation = _input[ix];
 			}	
 			
-		// Is batch normalization required in pooling layers? I think not, since there are no learnable parameters or activation functions.
-		// NO IT IS NOT REQUIRED!
 		return activation;
 	}
 
@@ -627,7 +784,9 @@ struct Pool3dTransform{
 void Pool3dLayer::forwardProp(PropagationType p)
 {
 	auto start = doomDebug.start("Pool3dLayer::forwardProp", 3);
-	
+		
+	// Some exapmles show that input, output and pool layer have neither non-linear activations or batch normalization:
+	// https://gluon.mxnet.io/chapter04_convolutional-neural-networks/cnn-batch-norm-scratch.html
 	int inputHeight = _prevLayer->layerSize()[1];
 	int inputWidth = _prevLayer->layerSize()[2];
 	int inputDepth = _prevLayer->layerSize()[3];
@@ -648,7 +807,7 @@ void Pool3dLayer::forwardProp(PropagationType p)
 	thrust::device_vector<float> activations(layerSize);
 
 	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
-		activations.begin(), Pool3dTransform(thrust::raw_pointer_cast(input.data()), _poolDim, //_poolDepth, 
+		activations.begin(), Pool3dPool(thrust::raw_pointer_cast(input.data()), _poolDim, //_poolDepth, 
 			inputHeight, inputWidth, inputDepth, _layerSize[1], _layerSize[2], _layerSize[3]));
 	cudaDeviceSynchronize();
 
@@ -868,11 +1027,22 @@ DenseLayer::DenseLayer(std::string ln, ActivationType at, std::vector<unsigned> 
 
 	std::vector<unsigned> curLayerSize = layerSize();
 	_weights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
+	_gamma = std::vector<float>(_numHiddenUnits);
+	_beta = std::vector<float>(_numHiddenUnits);
+	_means = std::vector<float>(_numHiddenUnits);
+	_vars = std::vector<float>(_numHiddenUnits);
 	_cachedWeights = std::vector<float>((prevTotalSize + 1)*_numHiddenUnits);
-	_TDUpdates = std::vector<float>(_layerSize[0]*(prevTotalSize + 1)*_numHiddenUnits);
-	_outGrads = std::vector<float>(_layerSize[0]*(prevTotalSize + 1)*_numHiddenUnits);									// Not sure if bias is required. Check later.
+	_cachedGamma = std::vector<float>(_numHiddenUnits);
+	_cachedBeta = std::vector<float>(_numHiddenUnits);
+	_movingMeans = std::vector<float>(_numHiddenUnits);
+	_movingVars = std::vector<float>(_numHiddenUnits);
 	_dotProducts = std::vector<float>(_layerSize[0]*_numHiddenUnits);
+	_normed = std::vector<float>(_layerSize[0]*_numHiddenUnits);
 	_activations = std::vector<float>(_layerSize[0]*_numHiddenUnits);
+	_outGrads = std::vector<float>(_layerSize[0]*(prevTotalSize + 1)*_numHiddenUnits);									// Not sure if bias is required. Check later.
+	_TDUpdates = std::vector<float>(_layerSize[0]*(prevTotalSize + 1)*_numHiddenUnits);
+	_TDGamma = std::vector<float>(_numHiddenUnits);
+	_TDBeta = std::vector<float>(_numHiddenUnits);
 	_vertices = nullptr;
 	_bias = nullptr;
 
@@ -951,32 +1121,95 @@ NetworkLayer::LayerType DenseLayer::layerType() const
 	return NetworkLayer::FC;
 }
 
-struct Dense1dTransform{
+struct Dense1dDotProducts{
 	float *_input;
 	float *_weights;
 	int _inputHeight;
 	int _layerHeight;
 
-	Dense1dTransform(float *i, float *w, int ih, int lh)
+	Dense1dDotProducts(float *i, float *w, int ih, int lh)
 		:_input(i), _weights(w),
 		_inputHeight(ih), _layerHeight(lh){}
-	__host__ __device__ thrust::tuple<float, float> operator()(size_t vidx)
+	__host__ __device__ float operator()(size_t vidx)
 	{
+		// Find out why is this line expensive (~40 milliseconds).
 		int b = vidx/_layerHeight;
+
 		int r = vidx - b*_layerHeight;
 		int widx = r*(_inputHeight + 1);
 		float dotProduct = 0.0f;
-		float activation;
+		//float activation;
 		for(unsigned h=0; h<_inputHeight; ++h)
 		{
 			int wx = widx + h;
 			dotProduct += _input[b*_inputHeight + h]*_weights[wx];
 		}
 		dotProduct += _weights[widx + _inputHeight];
+
+		return dotProduct;
+	}
+};
+
+struct Dense1dStatistics{
+	float *_dotProducts;
+	int _batchSize;
+	int _layerHeight;
+
+	Dense1dStatistics(float *dp, int bs, int lh)
+		:_dotProducts(dp), _batchSize(bs), _layerHeight(lh)
+	{}
+
+	__host__ __device__ thrust::tuple<float, float> operator () (size_t vidx)
+	{
+		float mean = 0;
+		for(unsigned b=0; b<_batchSize; ++b)
+		{
+			int vx = b*_layerHeight + vidx;
+			mean += _dotProducts[vx];	
+			
+		}
+		mean /= _batchSize;
 		
+		float var = 0;
+		for(unsigned b=0; b<_batchSize; ++b)
+		{
+			int vx = b*_layerHeight + vidx;
+			var += (_dotProducts[vx] - mean)*(_dotProducts[vx] - mean);
+		}
+		var /= _batchSize;
+ 
+		return thrust::make_tuple(mean, var);	
+	}
+
+};
+
+struct Dense1dActivations{
+	float *_dotProducts;
+	float *_means;
+	float *_vars;
+	float *_gamma;
+	float *_beta;
+	int _layerHeight;
+
+	Dense1dActivations(float *dp, float *m, float *v, float *g, float *b, int lh)
+		:_dotProducts(dp), _means(m), _vars(v), _gamma(g), _beta(b), _layerHeight(lh)
+	{}
+
+	__host__ __device__ thrust::tuple<float, float> operator () (size_t vidx)
+	{
+		int b = vidx/_layerHeight;
+		int i = vidx - b*_layerHeight;	
+		//int b = vidx/(_layerHeight*_layerWidth*_layerDepth);
+		//int ijk = vidx - b*_layerHeight*_layerWidth*_layerDepth;
+		//int i = ijk/(_layerWidth*_layerDepth);
+		//int jk = ijk - i*_layerWidth*_layerDepth;
+		//int j = jk/_layerDepth;
+		//int k = jk - j*_layerDepth;
+
 		// Batch normalization goes here.
-		activation = (dotProduct > 0)? dotProduct : 0;
-		return thrust::make_tuple(dotProduct, activation);
+		float normed = _gamma[i]*(_dotProducts[vidx] - _means[i])/std::sqrt(_vars[i] + 0.000001f) + _beta[i];
+		float activation = (normed > 0)? normed : 0;
+		return thrust::make_tuple(normed, activation);
 	}
 };
 
@@ -1004,22 +1237,63 @@ void DenseLayer::forwardProp(PropagationType p)
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.begin() + inputSize);
 	thrust::device_vector<float> dotProducts(layerSize);
-	thrust::device_vector<float> activations(layerSize);	
+	thrust::device_vector<float> activations(layerSize);
+	thrust::device_vector<float> normed(layerSize);
 	thrust::device_vector<float> weights(_weights.size());
+	thrust::device_vector<float> gamma(_gamma.size());
+	thrust::device_vector<float> beta(_beta.size());
 	if(p == TARGET)
+	{
 		thrust::copy(_cachedWeights.begin(), _cachedWeights.end(), weights.begin());
+		thrust::copy(_cachedGamma.begin(), _cachedGamma.end(), gamma.begin());
+		thrust::copy(_cachedBeta.begin(), _cachedBeta.end(), beta.begin());
+	}
 	else
+	{
 		thrust::copy(_weights.begin(), _weights.end(), weights.begin());
+		thrust::copy(_gamma.begin(), _gamma.end(), gamma.begin());
+		thrust::copy(_beta.begin(), _beta.end(), beta.begin());
+	}
 
-	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
-		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
-		Dense1dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), dotProducts.begin(), 
+		Dense1dDotProducts(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
 			prevSize, _layerSize[1]));
 	cudaDeviceSynchronize();
+
+	if(p != SINGLE)
+	{
+		thrust::device_vector<float> means(_means.size());
+		thrust::device_vector<float> vars(_vars.size());
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(means.size()),
+			thrust::make_zip_iterator(thrust::make_tuple(means.begin(), vars.begin())),
+			Dense1dStatistics(thrust::raw_pointer_cast(dotProducts.data()), _layerSize[0], _layerSize[1]));
+		cudaDeviceSynchronize();
+
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize),
+			thrust::make_zip_iterator(thrust::make_tuple(normed.begin(), activations.begin())),
+			Dense1dActivations(thrust::raw_pointer_cast(dotProducts.data()), thrust::raw_pointer_cast(means.data()), thrust::raw_pointer_cast(vars.data()),
+				thrust::raw_pointer_cast(gamma.data()), thrust::raw_pointer_cast(beta.data()), _layerSize[1]));
+		cudaDeviceSynchronize();
+
+		thrust::copy(means.begin(), means.end(), _means.begin());
+		thrust::copy(vars.begin(), vars.end(), _vars.begin());
+		updateStatistics(0.9);
+	}
+	else
+	{
+		thrust::device_vector<float> movingMeans(_movingMeans);
+		thrust::device_vector<float> movingVars(_movingVars);
+		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize),
+			thrust::make_zip_iterator(thrust::make_tuple(normed.begin(), activations.begin())),
+			Dense1dActivations(thrust::raw_pointer_cast(dotProducts.data()), thrust::raw_pointer_cast(movingMeans.data()), thrust::raw_pointer_cast(movingVars.data()),
+				thrust::raw_pointer_cast(gamma.data()), thrust::raw_pointer_cast(beta.data()), _layerSize[1]));
+		cudaDeviceSynchronize();
+	}
 
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
 	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
+	thrust::copy(normed.begin(), normed.end(), _normed.begin());
 	thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
 	doomDebug.end("DenseLayer::forwardProp", 3, start);
@@ -1138,9 +1412,26 @@ void DenseLayer::backProp(const std::vector<std::vector<double>> &actions, const
 
 void DenseLayer::cacheWeights()
 {
-	//std::cout << "DenseLayer::cacheWeights" << std::endl;
+	auto start = doomDebug.start("DenseLayer::cacheWeights", 4);
 
 	_cachedWeights = _weights;
+	_cachedGamma = _gamma;
+	_cachedBeta = _beta;
+
+	doomDebug.end("DenseLayer::cacheWeights", 4, start);
+}
+
+void DenseLayer::updateStatistics(double momentum)
+{
+	auto start = doomDebug.start("DenseLayer::updateStatistics", 4);
+	
+	for(unsigned i=0; i<_movingMeans.size(); ++i)
+	{
+		_movingMeans[i] = _movingMeans[i]*momentum + _means[i]*(1.0f - momentum);
+		_movingVars[i] = _movingVars[i]*momentum + _vars[i]*(1.0f - momentum);
+	}
+
+	doomDebug.end("DenseLayer::updateStatistics", 4, start);
 }
 
 unsigned DenseLayer::numHiddenUnits() const
@@ -1246,7 +1537,9 @@ NetworkLayer::LayerType OutputLayer::layerType() const
 void OutputLayer::forwardProp(PropagationType p)
 {
 	auto start = doomDebug.start("OutputLayer::forwardProp", 3);
-
+	
+	// Some exapmles show that input, output and pool layer have neither non-linear activations or batch normalization:
+	// https://gluon.mxnet.io/chapter04_convolutional-neural-networks/cnn-batch-norm-scratch.html
 	std::vector<unsigned> prevLayerSize = _prevLayer->layerSize();
 	int inputSize, layerSize;
 	if(p == SINGLE)
@@ -1271,16 +1564,16 @@ void OutputLayer::forwardProp(PropagationType p)
 	thrust::device_vector<float> dotProducts(layerSize);
 	thrust::device_vector<float> activations(layerSize);
 
-	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), 
-		thrust::make_zip_iterator(thrust::make_tuple(dotProducts.begin(), activations.begin())), 
-		Dense1dTransform(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
+	thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(layerSize), dotProducts.begin(), 
+		Dense1dDotProducts(thrust::raw_pointer_cast(input.data()), thrust::raw_pointer_cast(weights.data()), 
 			prevLayerSize[1], _layerSize[1]));
 	cudaDeviceSynchronize();
 
 	// It looks like it works great with std::vector<float> as output vector of thrust::copy. 
 	// Maybe try thrust::host_vector<float> as member vectors as well. Also, make sure location of output vector is not changed.
 	thrust::copy(dotProducts.begin(), dotProducts.end(), _dotProducts.begin());
-	thrust::copy(activations.begin(), activations.end(), _activations.begin());
+	thrust::copy(dotProducts.begin(), dotProducts.end(), _activations.begin());
+	//thrust::copy(activations.begin(), activations.end(), _activations.begin());
 	
 	doomDebug.end("OutputLayer::forwardProp", 3, start);
 }
