@@ -63,15 +63,16 @@ private:
 	std::vector<float> _cachedGamma;
 	std::vector<float> _cachedBeta;
 	std::vector<float> _dotProducts;
+	std::vector<float> _zHat;
 	std::vector<float> _normed;
 	std::vector<float> _means;
 	std::vector<float> _vars;
+	std::vector<float> _p1Sum;
 	std::vector<float> _movingMeans;
 	std::vector<float> _movingVars;
-	// It seems possible to move _TDGamma and _TDBeta in _TDUpdates.
 	std::vector<float> _TDUpdates;
-	std::vector<float> _TDGamma;
-	std::vector<float> _TDBeta;
+	//std::vector<float> _TDGamma;
+	//std::vector<float> _TDBeta;
 	std::vector<float> _outGrads;
 	Tensor3d<Conv3dVertex*> *_vertices;
 
@@ -124,16 +125,16 @@ private:
 	std::vector<float> _beta;
 	std::vector<float> _means;
 	std::vector<float> _vars;
+	std::vector<float> _p1Sum;
 	std::vector<float> _cachedWeights;
 	std::vector<float> _cachedGamma;
 	std::vector<float> _cachedBeta;
 	std::vector<float> _movingMeans;
 	std::vector<float> _movingVars;
 	std::vector<float> _dotProducts;
+	std::vector<float> _zHat;
 	std::vector<float> _normed;
 	std::vector<float> _TDUpdates;
-	std::vector<float> _TDGamma;
-	std::vector<float> _TDBeta;
 	std::vector<float> _outGrads;
 	Tensor1d<Dense1dVertex*> *_vertices;
 
