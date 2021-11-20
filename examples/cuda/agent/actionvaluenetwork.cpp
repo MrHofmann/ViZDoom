@@ -3,12 +3,12 @@
 extern AgentDebug doomDebug;
 
 ActionValueNetwork::ActionValueNetwork(const AgentConfig &agentConf, const NetworkConfig &conf)
-	:_stateDim(conf.stateDim), _batchSize(agentConf.numMinibatch), _numActions(conf.numActions)
+	:/*_stateDim(agentConf.stateDim), */_inputDim(conf.inputDim), _batchSize(agentConf.numMinibatch), _numActions(conf.numActions)
 {
 	auto start = doomDebug.start("ActionValueNetwork::ActionValueNetwork", 2);
 
 	NetworkLayer *prevLayer = nullptr;
-	std::vector<unsigned> prevLayerSize = {_batchSize, _stateDim[0], _stateDim[1], _stateDim[2]};
+	std::vector<unsigned> prevLayerSize = {_batchSize, _inputDim[0], _inputDim[1], _inputDim[2]};
 	NetworkLayer *layer = new InputLayer("input", RELU, prevLayerSize, prevLayer);
 	_layers.push_back(layer);
 	_layerSizes["input"] = prevLayerSize;
@@ -128,6 +128,8 @@ void ActionValueNetwork::cacheWeights()
 			((Conv3dLayer*)(*it))->cacheWeights();
 		else if((*it)->layerType() == NetworkLayer::FC)
 			((DenseLayer*)(*it))->cacheWeights();
+        else if((*it)->layerType() == NetworkLayer::OUTPUT)
+            ((OutputLayer*)(*it))->cacheWeights();
 	}		
 	
 	doomDebug.end("ActionValueNetwork::cacheWeights", 3, start);
@@ -140,14 +142,16 @@ std::vector<float> ActionValueNetwork::getActionValueSingle(vizdoom::BufferPtr s
 
 	std::vector<vizdoom::BufferPtr> states = {state};
 	// Init first layer.
+    
 	initInput(states);
 	for(auto it=_layers.begin(); it!=_layers.end(); it++)
+    {
 		// activation(prev_layer*W + b)
 		(*it)->forwardProp(NetworkLayer::SINGLE);
-
+    }
 	std::vector<float> actionValues = _layers.back()->activations();
-	
-	doomDebug.end("ActionValueNetwork::getActionValueSingle", 2, start);
+
+    doomDebug.end("ActionValueNetwork::getActionValueSingle", 2, start);
 	return std::vector<float>(actionValues.begin(), actionValues.begin() + _layers.back()->layerSize()[1]);
 }
 
@@ -164,9 +168,17 @@ std::vector<std::vector<float>> ActionValueNetwork::getActionValuePreds(const st
 		(*it)->forwardProp(NetworkLayer::PREDICTION);
 
 	std::vector<float> actionValues = _layers.back()->activations();
-	
-	doomDebug.end("ActionValueNetwork::getActionValuePreds", 2, start);
-	return {std::vector<float>(actionValues.begin(), actionValues.end())};
+    std::vector<std::vector<float>> qMat;
+    for(unsigned b=0; b<_batchSize; ++b)
+    {
+        std::vector<float> actionValuesSample(_numActions);
+        std::copy(actionValues.begin() + b*_numActions, actionValues.begin() + (b+1)*_numActions, actionValuesSample.begin()); 
+        qMat.push_back(actionValuesSample);
+    }
+
+    doomDebug.end("ActionValueNetwork::getActionValuePreds", 2, start);
+	//return {std::vector<float>(actionValues.begin(), actionValues.end())};
+    return qMat;
 }
 
 
@@ -183,9 +195,17 @@ std::vector<std::vector<float>> ActionValueNetwork::getActionValueTargets(const 
 		(*it)->forwardProp(NetworkLayer::TARGET);
 
 	std::vector<float> actionValues = _layers.back()->activations();
-	
+	std::vector<std::vector<float>> qNextMat;
+    for(unsigned b=0; b<_batchSize; ++b)
+    {
+        std::vector<float> actionValuesSample(_numActions);
+        std::copy(actionValues.begin() + b*_numActions, actionValues.begin() + (b+1)*_numActions, actionValuesSample.begin()); 
+        qNextMat.push_back(actionValuesSample);
+    }
+
 	doomDebug.end("ActionValueNetwork::getActionValueTargets", 2, start);
-	return {std::vector<float>(actionValues.begin(), actionValues.end())};
+	//return {std::vector<float>(actionValues.begin(), actionValues.end())};
+    return qNextMat;
 }
 
 void ActionValueNetwork::getTDUpdate(const std::vector<ExperienceSample> &experiences, const std::vector<double> &deltaVec)
@@ -206,10 +226,18 @@ void ActionValueNetwork::getTDUpdate(const std::vector<ExperienceSample> &experi
 
 std::list<NetworkLayer*> ActionValueNetwork::getLayers() const
 {
-	auto start = doomDebug.start("ActionValueNetwork::getLayers", 2);
+	auto start = doomDebug.start("ActionValueNetwork::getLayers", 3);
 
-	doomDebug.end("ActionValueNetwork::getLayers", 2, start);
+	doomDebug.end("ActionValueNetwork::getLayers", 3, start);
 	return _layers;
+}
+
+std::vector<unsigned> ActionValueNetwork::getInputDim() const
+{
+	auto start = doomDebug.start("ActionValueNetwork::getInputDim", 3);
+
+	doomDebug.end("ActionValueNetwork::getInputDim", 3, start);
+    return _inputDim;
 }
 
 /*void ActionValueNetwork::init_saxe(unsigned num_rows, unsigned num_cols)

@@ -37,6 +37,7 @@ private:
 	ExperienceReplayBuffer _replayBuffer;
 	ActionValueNetwork _network;
 	AdamOptimizer _optimizer;
+    std::vector<unsigned> _stateDim;
 	unsigned _numActions;
 	unsigned _numReplay;
 	double _discount;
@@ -50,6 +51,7 @@ private:
 	double _sumRewards;
 	unsigned _episodeSteps;
 
+    vizdoom::BufferPtr resizeState(vizdoom::BufferPtr state) const;
 	std::vector<double> softmax(const std::vector<float> &actionValues) const;
 	std::vector<double> randomActionWithProb(const std::vector<double> &probs) const;
 	void optimizeNetwork(const std::vector<ExperienceSample> &exp, ActionValueNetwork q);

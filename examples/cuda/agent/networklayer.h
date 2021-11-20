@@ -36,6 +36,7 @@ public:
 class InputLayer : public NetworkLayer{
 private:
 	std::vector<vizdoom::BufferPtr> _states;
+    std::vector<unsigned> _stateSize;
 	Tensor3d<Input3dVertex*> *_vertices;
 
 public:
@@ -90,10 +91,16 @@ public:
 	unsigned filterDepth() const;
 	unsigned filterStride() const;	
 	std::vector<float> weights() const;
+	std::vector<float> gammas() const;
+	std::vector<float> betas() const;
+	std::vector<float> means() const;
+	std::vector<float> vars() const;
 	std::vector<float> dotProducts() const;
+	std::vector<float> zHat() const;
+	std::vector<float> normed() const;
 	std::vector<float> outGrads() const;
 	Tensor3d<Conv3dVertex*>* vertices() const;
-	void setWeights(const std::vector<float> &w);
+	void setWeights(const std::vector<float> &w, const std::vector<float> &g, const std::vector<float> &b);
 };
 
 class Pool3dLayer : public NetworkLayer{
@@ -149,10 +156,17 @@ public:
 
 	unsigned numHiddenUnits() const;
 	std::vector<float> weights() const;
+    std::vector<float> cachedWeights() const;
+	std::vector<float> gammas() const;
+	std::vector<float> betas() const;
+    std::vector<float> means() const;
+    std::vector<float> vars() const;
 	std::vector<float> dotProducts() const;
+	std::vector<float> zHat() const;
+	std::vector<float> normed() const;
 	std::vector<float> outGrads() const;
 	Tensor1d<Dense1dVertex*> *vertices() const;
-	void setWeights(const std::vector<float> &w);
+	void setWeights(const std::vector<float> &w, const std::vector<float> &g, const std::vector<float> &b);
 };
 
 class OutputLayer : public NetworkLayer{
@@ -177,6 +191,7 @@ public:
 
 	unsigned numHiddenUnits() const;
 	std::vector<float> weights() const;
+    std::vector<float> cachedWeights() const;
 	std::vector<float> dotProducts() const;
 	std::vector<float> outGrads() const;
 	Tensor1d<Dense1dVertex*> *vertices() const;

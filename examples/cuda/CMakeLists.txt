@@ -19,7 +19,7 @@ add_library(libvizdoom SHARED IMPORTED GLOBAL)
 set_property(TARGET libvizdoom PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../build/bin/libvizdoom.so)
 
 #find_package(OpenCV 3.1 EXACT REQUIRED PATHS /usr/local/opencv3.1)
-find_package(Boost 1.74.0 EXACT REQUIRED)
+find_package(Boost 1.75.0 EXACT REQUIRED)
 find_package(CUDA QUIET REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -49,8 +49,8 @@ include_directories( ${VIZDOOM_INCLUDE_DIR} ${Boost_INCLUDE_DIR} )
 #cuda_add_executable( main_cpp main.cpp ./agent/doomagent.cpp ./agent/actionvaluenetwork.cpp ./agent/networkelements.cpp ./agent/experiencereplaybuffer.cpp)
 cuda_add_executable( main main.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cpp ./agent/networklayer.cu ./agent/networkelements.cpp )
 target_link_libraries( main ${VIZDOOM_LIBS} )
-#cuda_add_executable( test test.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cpp ./agent/networklayer.cu ./agent/networkelements.cpp )
-#target_link_libraries( test ${VIZDOOM_LIBS} )
+cuda_add_executable( test test.cpp ./agent/doomagent.cpp ./agent/experiencereplaybuffer.cpp ./agent/actionvaluenetwork.cpp ./agent/networklayer.cu ./agent/networkelements.cpp )
+target_link_libraries( test ${VIZDOOM_LIBS} )
 
 #set_target_properties( main
 #	PROPERTIES

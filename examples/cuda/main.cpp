@@ -33,7 +33,7 @@ int main() {
     //game->setDoomScenarioPath("../../../scenarios/basic.wad");
 	game->setDoomMap("map01");    
 
-	game->setScreenResolution(RES_160X120); // Sets resolution. Default is 320X240
+	game->setScreenResolution(RES_640X480); // Sets resolution. Default is 320X240
     game->setScreenFormat(RGB24); // Default is CRCGCB.
     //game->setRenderHud(false);
     //game->setRenderMinimalHud(false); // If hud is enabled
@@ -85,18 +85,24 @@ int main() {
     std::srand(time(0));
 			
     int episodes = 10;
-	// Lunar lander agentConf = {x, 50000, 4, 8, x, x, x}.
-	AgentConfig agentConf = {8, 1000, 1, 1, 7, 1, 1};
-	
-	// My old configuration.
-	NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};				// 2GB RAM, 8sec per step.
-	
+    std::vector<unsigned> stateDim = {640, 480, 3};
+    //Agent config: stateDim, numActions, replayBufferMaxSize, numReplay, numMiniBatch, seed, discount, tau
+    //Network config: inputSize, numFilters, filterDim, filterStride, activations, poolDim, poolStride, numHiddenUnits, numActions
+	//Lunar Lander agentConf = {x, x, 50000, 4, 8, x, x, x}.
+
 	// Small configuration from ViZDoom paper experiment A and B.
+	//AgentConfig agentConf = {stateDim, 3, 10000, 1, 40, 7, 0.99, 1.0}; // eps = [1.0, 0.1]
 	//NetworkConfig netConf = {{60, 45, 3}, {32, 32}, {7, 4}, {1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {800}, 3}; 				// 8GB RAM, 45sec per step.
+	//AgentConfig agentConf = {stateDim, 4, 10000, 1, 64, 7, 1.0, 1.0}; // eps = [1.0, 0.1]
 	//NetworkConfig netConf = {{120, 45, 3}, {32, 32, 32}, {7, 5, 3}, {1, 1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {1024}, 4};	
+		
+	// My old configuration.
+	//AgentConfig agentConf = {stateDim, 8, 1000, 1, 16, 7, 1, 1};
+    //NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};		    // 3.638441sec per step.
 	
 	// My new configuration.
-	//NetworkConfig netConf = {{60, 45, 3}, {32, 32}, {7, 4}, {1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {20}, 8};				// 3GB RAM, 15sec per step.
+	AgentConfig agentConf = {stateDim, 8, 1000, 1, 2, 7, 1, 1};
+    NetworkConfig netConf = {{60, 45, 3}, {32, 32}, {7, 4}, {1, 1}, {RELU, RELU}, {2, 2}, {1, 1}, {20}, 8};			        // 1.330703sec per step.
 	
 	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};
 	DoomAgent agent(agentConf, netConf, optConf);

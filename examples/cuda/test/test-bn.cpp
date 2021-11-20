@@ -102,42 +102,6 @@ void initWeights(ActionValueNetwork *network)
 	((OutputLayer*)(*iter))->setWeights(dense3Weights);		
 }
 
-void gradientCheck(ActionValueNetwork *network, std::vector<float> actionValues, float epsilon)
-{
-    std::vector<std::vector<float>> weights;
-    std::vector<std::vector<float>> gammas;
-    std::vector<std::vector<float>> betas;
-    std::list<NetworkLayer*> layers = network->getLayers();
-    for(auto it=layers.begin(); it!=layers.end(); it++)
-        switch((*it)->layerType()){
-            case NetworkLayer::CONV:
-                weights.push_back(((Conv3dLayer*)(*it))->weights());
-                gammas.push_back(((Conv3dLayer*)(*it))->gammas());
-                betas.push_back(((Conv3dLayer*)(*it))->betas());
-                break;
-            case NetworkLayer::FC:
-                weights.push_back(((DenseLayer*)(*it))->weights());
-                gammas.push_back(((DenseLayer*)(*it))->gammas());
-                betas.push_back(((DenseLayer*)(*it))->betas());
-                break;
-            case NetworkLayer::OUTPUT:
-                weights.push_back(((OutputLayer*)(*it))->weights());
-                break;
-        }
-
-    for(unsigned i=0; i<weights.size(); ++i)
-    {
-        for(unsigned j=0; j<weights[i].size(); ++j)
-        {
-            std::vector<std::vector<float>> pWeights = weights;
-            std::vector<std::vector<float>> mWeights = weights;
-            pWeights[i][j] += epsilon;
-            mWeights[i][j] -= epsilon;
-           // network->setWeights(pWeights[0], pWeights[1], pWeights[2]);
-        }
-    }
-}
-
 void printLayers(ActionValueNetwork *network)
 {
     auto layers = network->getLayers();    
@@ -360,17 +324,17 @@ void printLayers(ActionValueNetwork *network)
 
 int main() 
 {
-        // Lunar lander agentConf = {x, x, 50000, 4, 8, x, x, x}.
+        // Lunar lander agentConf = {x, 50000, 4, 8, x, x, x}.
         //AgentConfig agentConf = {8, 1000, 1, 1, 7, 1, 1};
 
         // My old configuration.
         //NetworkConfig netConf = {{160, 120, 3}, {8, 4}, {4, 2}, {1, 1}, {RELU, RELU}, {4, 2}, {1, 1}, {50, 20}, 8};                             // 2GB RAM, 8sec per st>
 
-	//stateDim, numActions, replayBufferMaxSize, numReplay, numMiniBatch, seed, discount, tau
+	//numActions, replayBufferMaxSize, numReplay, numMiniBatch, seed, discount, tau
     unsigned numReplay = 1;
     unsigned numMiniBatch = 4;
     unsigned bufferSize = 5;
-	AgentConfig agentConf = {{6, 6, 3}, 3, 100, numReplay, numMiniBatch, 1, 1};
+	AgentConfig agentConf = {3, 100, numReplay, numMiniBatch, 1, 1};
 	//inputSize, numFilters, filterDim, filterStride, activations, poolDim, poolStride, numHiddenUnits, numActions
 	NetworkConfig netConf = {{6, 6, 3}, {3, 4}, {2, 2}, {1, 1}, {TANH, TANH}, {2, 2}, {1, 1}, {10, 5}, 3};
 	OptimizerConfig optConf = {0.1, 0.2, 0.3, 0.5};

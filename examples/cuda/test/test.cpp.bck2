@@ -1,0 +1,23 @@
+#include <iostream>
+#include <vector>
+#include <cstdlib>
+#include <ctime>
+#include <chrono>
+#include <thread>
+
+#include "agent/doomagent.h"
+
+
+void sleep(unsigned int time){
+    std::this_thread::sleep_for(std::chrono::milliseconds(time));
+}
+
+using namespace vizdoom;
+
+AgentDebug doomDebug(2);
+
+
+int main() 
+{
+return 0;	
+}       

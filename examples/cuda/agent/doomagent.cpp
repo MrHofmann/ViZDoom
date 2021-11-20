@@ -5,7 +5,7 @@
 extern AgentDebug doomDebug;
 
 DoomAgent::DoomAgent(const AgentConfig &agentConf, const NetworkConfig &netConf, const OptimizerConfig &optConf)
-	:_numActions(agentConf.numActions), _numReplay(agentConf.numReplay), _discount(agentConf.discount), _tau(agentConf.tau)
+	:_stateDim(agentConf.stateDim), _numActions(agentConf.numActions), _numReplay(agentConf.numReplay), _discount(agentConf.discount), _tau(agentConf.tau)
 {
 	auto start = doomDebug.start("DoomAgent::DoomAgent", 1);
 
@@ -87,6 +87,40 @@ std::vector<double> DoomAgent::randomActionWithProb(const std::vector<double> &p
 	return action;
 }
 
+// Check if this ALWAYS gives the expected size of resized state!
+vizdoom::BufferPtr DoomAgent::resizeState(vizdoom::BufferPtr state) const
+{
+	auto start = doomDebug.start("DoomAgent::resizeState", 3);
+
+    int bufSize = _stateDim[0]*_stateDim[1]*_stateDim[2];
+    std::vector<unsigned> netInputDim = _network.getInputDim();
+    double wResizeStep = (double)_stateDim[0]/netInputDim[0];
+    double hResizeStep = (double)_stateDim[1]/netInputDim[1];
+    vizdoom::Buffer *resized = new vizdoom::Buffer;
+    for(unsigned i=0; i<netInputDim[0]; ++i)
+    {
+        int w = i*wResizeStep;
+        for(unsigned j=0; j<netInputDim[1]; ++j)
+        {
+            int h = j*hResizeStep;
+            for(unsigned k=0; k<netInputDim[2]; ++k)
+            {
+                int s = w*_stateDim[1]*_stateDim[2] + h*_stateDim[2] + k;
+                (*resized).push_back((*state)[s]);
+                //std::cout << s << " " << w << " " << h << " " << k << std::endl;
+            }
+        }
+    }
+
+    if((*resized).size() != netInputDim[0]*netInputDim[1]*netInputDim[2])
+        std::cout << "resize error: " << (*resized).size() << " != " 
+            << netInputDim[0]*netInputDim[1]*netInputDim[2] << std::endl;
+
+	doomDebug.end("DoomAgent::resizeState", 3, start);
+    return vizdoom::BufferPtr(resized);
+}
+
+
 // This is a softmax policy
 std::vector<double> DoomAgent::policy(vizdoom::BufferPtr state)
 {
@@ -112,8 +146,11 @@ std::vector<double> DoomAgent::agentStart(vizdoom::BufferPtr state)
 	
 	_sumRewards = 0;
 	_episodeSteps = 0;
+
+    // Maybe create another vizdoom::BufferPtr here and resize state to match the network input.
 	
-	_lastState = state;
+    //_lastState = state;
+    _lastState = resizeState(state);
 	_lastAction = policy(_lastState); 
 
 	doomDebug.end("DoomAgent::agentStart", 1, start);
@@ -127,15 +164,17 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 	_sumRewards += reward;
 	_episodeSteps += 1;
 	
-	std::vector<double> action = policy(state);
+    // Maybe create another vizdoom::BufferPtr here and resize state to match the network input.
+    vizdoom::BufferPtr resizedState = resizeState(state);
+    std::vector<double> action = policy(resizedState);
 	//std::cout << "{ ";
 	//for(unsigned i=0; i<action.size(); ++i)
 	//	std::cout << action[i] << " ";
 	//std::cout << "}" << std::endil;	
 
 	// This block is for training.
-	_replayBuffer.append(_lastState, _lastAction, reward, false, state);
-	if(_replayBuffer.getBufferSize() > _replayBuffer.getMinibatchSize())
+	_replayBuffer.append(_lastState, _lastAction, reward, false, resizedState);
+	if(_replayBuffer.getBufferSize() >= _replayBuffer.getMinibatchSize())
 	{
 		_network.cacheWeights();
 		for(unsigned i=0; i<_numReplay; ++i)
@@ -181,7 +220,7 @@ std::vector<double> DoomAgent::agentStep(double reward, vizdoom::BufferPtr state
 		}
 	}
 
-	_lastState = state;
+	_lastState = resizedState;
 	_lastAction = action;
 
 	doomDebug.end("DoomAgent::agentStep", 1, time);

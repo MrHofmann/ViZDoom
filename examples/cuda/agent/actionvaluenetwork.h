@@ -7,7 +7,8 @@
 class ActionValueNetwork{
 private:
 	// Convolutional network with n conv layers, m fully connected layers and softmax output layer.
-	std::vector<unsigned> _stateDim;							
+    //std::vector<unsigned> _stateDim;
+	std::vector<unsigned> _inputDim;							
 	std::map<std::string, ActivationType> _activations;     	
 	std::map<std::string, std::vector<unsigned>> _layerSizes;
 	unsigned _batchSize;
@@ -29,6 +30,7 @@ public:
 	void getTDUpdate(const std::vector<ExperienceSample> &experiences, const std::vector<double> &deltaVec);
 	
 	std::list<NetworkLayer*> getLayers() const;
+    std::vector<unsigned> getInputDim() const;
 };
 
 #endif // ACTIONVALUENETWORK_H

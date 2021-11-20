@@ -155,7 +155,7 @@ struct Tensor1d
 
 struct NetworkConfig{
 	//self.rand_generator = np.random.RandomState(network_config.get("seed"))
-	std::vector<unsigned> stateDim;                // [W, H, C]
+	std::vector<unsigned> inputDim;                // [W, H, C]
 	std::vector<unsigned> numFilters;  			// [F1, F2, ... , Fn]
 	std::vector<unsigned> filterDim;       		// [F1s, F2s, ... , Fns]
 	std::vector<unsigned> filterStrides;   		// [Sf1, Sf2, ... , Sfn]
@@ -174,6 +174,7 @@ struct OptimizerConfig{
 };
 
 struct AgentConfig{
+    std::vector<unsigned> stateDim;
 	unsigned numActions;
 	unsigned replayBufferSize;
 	unsigned numReplay;

@@ -1,6 +1,7 @@
 #include "networklayer.h"
 #include <limits>
 #include <thrust/device_vector.h>
+#include <iomanip>
 
 extern AgentDebug doomDebug;
 
@@ -61,7 +62,9 @@ InputLayer::InputLayer(std::string ln, ActivationType at, const std::vector<unsi
 
 	_states = {};
 	int layerTotalSize = _layerSize[1]*_layerSize[2]*_layerSize[3];
+    //std::cout <<  _layerSize[1] << " "  << _layerSize[2] << " " << _layerSize[3] << std::endl;
 	_activations = std::vector<float>(_layerSize[0]*layerTotalSize);
+    //std::cout << _activations.size() << std::endl;
 	_vertices = nullptr;
 	_bias = nullptr;
 
@@ -291,7 +294,8 @@ struct Conv3dStatistics{
 
 	__host__ __device__ thrust::tuple<float, float, float> operator () (size_t cidx)
 	{		
-		float mean = 0;
+        // Was float here originally, but had to change to double because of precision error.
+		double mean = 0;
 		for(unsigned b=0; b<_batchSize; ++b)
 		{
 			int vidx = b*_layerHeight*_layerWidth*_layerDepth + cidx;
@@ -307,8 +311,9 @@ struct Conv3dStatistics{
 		}
 		mean /= _batchSize*_layerHeight*_layerWidth;
 		
-		float var = 0;
-		float p1Sum = 0;
+        // Was float here originally, but had to change to double because of precision error.
+		double var = 0;
+		double p1Sum = 0;
 		for(unsigned b=0; b<_batchSize; ++b)
 		{
 			int vidx = b*_layerHeight*_layerWidth*_layerDepth + cidx;
@@ -318,13 +323,18 @@ struct Conv3dStatistics{
 				for(unsigned w=0; w<_layerWidth; ++w)
 				{
 					int vx = vix + w*_layerDepth;
+                    //printf("%f %f %f %f\n", _dotProducts[vx], mean, (double)_dotProducts[vx] - (double)mean,
+                    //        ((double)_dotProducts[vx] - (double)mean)*((double)_dotProducts[vx] - (double)mean));
 					var += (_dotProducts[vx] - mean)*(_dotProducts[vx] - mean);
 					p1Sum += _dotProducts[vx] - mean;
 				}
 			}
 		}
+        //printf("%f\n", var);
 		var /= _batchSize*_layerHeight*_layerWidth;
- 
+        //printf("%f\n", var);
+
+        // There is still some error here when converting from double back to float but it is minimal. 
 		return thrust::make_tuple(mean, var, p1Sum);
 	}
 };
@@ -355,8 +365,12 @@ struct Conv3dActivations{
 
 		// Batch normalization goes here.
 		float zHat = (_dotProducts[vidx] - _means[k])/std::sqrt(_vars[k] + 0.000001f);
+		//double zHat = ((double)_dotProducts[vidx] - (double)_means[k])/std::sqrt((double)_vars[k] + 0.000001);
+		//float zHat = _dotProducts[vidx];
 		float normed = _gamma[k]*zHat + _beta[k];
-		float activation = (normed > 0)? normed : 0;
+		//double normed = (double)_gamma[k]*zHat + (double)_beta[k];
+		//float normed = zHat;
+		float activation = (normed > 0.0)? normed : 0.0;
 		return thrust::make_tuple(zHat, normed, activation);
 	}
 };
@@ -407,10 +421,12 @@ void Conv3dLayer::forwardProp(PropagationType p)
 			_filterDim, _filterDepth, inputHeight, inputWidth, inputDepth, _layerSize[1], _layerSize[2], _layerSize[3]));
 	cudaDeviceSynchronize();
 
+    // Should TARGET be treated the same as PREDICTION here???
 	if(p != SINGLE)
 	{
 		thrust::device_vector<float> means(_layerSize[3]);
 		thrust::device_vector<float> vars(_layerSize[3]);
+		//thrust::device_vector<float> vars1(_layerSize[3]);
 		thrust::device_vector<float> p1Sum(_layerSize[3]);
 		thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(means.size()),
 			thrust::make_zip_iterator(thrust::make_tuple(means.begin(), vars.begin(), p1Sum.begin())),
@@ -423,6 +439,7 @@ void Conv3dLayer::forwardProp(PropagationType p)
 				thrust::raw_pointer_cast(gamma.data()), thrust::raw_pointer_cast(beta.data()), _layerSize[1], _layerSize[2], _layerSize[3]));
 		cudaDeviceSynchronize();
 
+        // Should stats be updated here when doing TARGET prop???
 		thrust::copy(means.begin(), means.end(), _means.begin());
 		thrust::copy(vars.begin(), vars.end(), _vars.begin());
 		thrust::copy(p1Sum.begin(), p1Sum.end(), _p1Sum.begin());
@@ -582,6 +599,7 @@ struct Conv3dBack{
 					// in previous layer (vidx + skipped vertices because of filter size) and then adding the precise location of wanted
 					// vertex in convolution block with respect to top left corner. It is easier to understand on a drawing.
 					int aidx = vidx + vi*(_filterDim - 1)*_prevLayerDepth + i*_prevLayerWidth*_prevLayerDepth + j*_prevLayerDepth + k;
+
 					tdUpdate += _prevAct[aidx]*dBatchNorm*_deltas[bidx];
 				}
 			}
@@ -728,11 +746,53 @@ std::vector<float> Conv3dLayer::weights() const
 	return _weights;
 }
 
+std::vector<float> Conv3dLayer::gammas() const
+{
+	//std::cout << "Conv3dLayer::gammas" << std::endl;
+
+	return _gamma;
+}
+
+std::vector<float> Conv3dLayer::betas() const
+{
+	//std::cout << "Conv3dLayer::betas" << std::endl;
+
+	return _beta;
+}
+
+std::vector<float> Conv3dLayer::means() const
+{
+	//std::cout << "Conv3dLayer::means" << std::endl;
+
+	return _means;
+}
+
+std::vector<float> Conv3dLayer::vars() const
+{
+	//std::cout << "Conv3dLayer::vars" << std::endl;
+
+	return _vars;
+}
+
 std::vector<float> Conv3dLayer::dotProducts() const
 {
 	//std::cout << "Conv3dLayer::dotProducts" << std::endl;
 
 	return _dotProducts;
+}
+
+std::vector<float> Conv3dLayer::zHat() const
+{
+	//std::cout << "Conv3dLayer::zHat" << std::endl;
+
+	return _zHat;
+}
+
+std::vector<float> Conv3dLayer::normed() const
+{
+	//std::cout << "Conv3dLayer::normed" << std::endl;
+
+	return _normed;
 }
 
 std::vector<float> Conv3dLayer::outGrads() const
@@ -748,12 +808,16 @@ Tensor3d<Conv3dVertex*> *Conv3dLayer::vertices() const
 	return _vertices;
 }
 
-void Conv3dLayer::setWeights(const std::vector<float> &w)
+void Conv3dLayer::setWeights(const std::vector<float> &w, const std::vector<float> &g, const std::vector<float> &b)
 {
 	//std::cout << "Conv3dLayer::setWeights" << std::endl;
 
 	_weights.clear();
+    _gamma.clear();
+    _beta.clear();
 	std::copy(w.begin(), w.end(), std::back_inserter(_weights));
+    std::copy(g.begin(), g.end(), std::back_inserter(_gamma));
+    std::copy(b.begin(), b.end(), std::back_inserter(_beta));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -868,6 +932,10 @@ void Pool3dLayer::forwardProp(PropagationType p)
 		layerSize = _layerSize[0]*_layerSize[1]*_layerSize[2]*_layerSize[3];
 	}
 	std::vector<float> act = _prevLayer->activations();
+	//std::cout << _prevLayer->layerType() << std::endl;
+	//for(unsigned i=0; i<act.size(); ++i)
+	//	std::cout << act[i] << " ";
+	//std::cout << std::endl;
 	thrust::device_vector<float> input(act.begin(), act.begin() + inputSize);
 	thrust::device_vector<float> activations(layerSize);
 
@@ -1274,8 +1342,15 @@ struct Dense1dActivations{
 
 		// Batch normalization goes here.
 		float zHat = (_dotProducts[vidx] - _means[i])/std::sqrt(_vars[i] + 0.000001f);
+		//float zHat = _dotProducts[vidx];
 		float normed = _gamma[i]*zHat + _beta[i];
-		float activation = (normed > 0)? normed : 0;
+		//float normed = zHat;
+        float activation;
+        if(normed > 0)
+            activation = normed;
+        else
+            activation = 0;
+		//float activation = (normed > 0)? normed : 0;
 		return thrust::make_tuple(zHat, normed, activation);
 	}
 };
@@ -1543,11 +1618,60 @@ std::vector<float> DenseLayer::weights() const
 	return _weights;
 }
 
+std::vector<float> DenseLayer::cachedWeights() const
+{
+	//std::cout << "DenseLayer::cachedWeights" << std::endl;
+
+	return _cachedWeights;
+}
+
+std::vector<float> DenseLayer::gammas() const
+{
+	//std::cout << "DenseLayer::gammas" << std::endl;
+
+	return _gamma;
+}
+
+std::vector<float> DenseLayer::betas() const
+{
+	//std::cout << "DenseLayer::betas" << std::endl;
+
+	return _beta;
+}
+
+std::vector<float> DenseLayer::means() const
+{
+	//std::cout << "DenseLayer::means" << std::endl;
+
+	return _means;
+}
+
+std::vector<float> DenseLayer::vars() const
+{
+	//std::cout << "DenseLayer::vars" << std::endl;
+
+	return _vars;
+}
+
 std::vector<float> DenseLayer::dotProducts() const
 {
 	//std::cout << "DenseLayer::dotProducts" << std::endl;
 
 	return _dotProducts;
+}
+
+std::vector<float> DenseLayer::zHat() const
+{
+	//std::cout << "DenseLayer::zHat" << std::endl;
+
+	return _zHat;
+}
+
+std::vector<float> DenseLayer::normed() const
+{
+	//std::cout << "DenseLayer::normed" << std::endl;
+
+	return _normed;
 }
 
 std::vector<float> DenseLayer::outGrads() const
@@ -1563,12 +1687,16 @@ Tensor1d<Dense1dVertex*>* DenseLayer::vertices() const
 	return _vertices;
 }
 
-void DenseLayer::setWeights(const std::vector<float> &w)
+void DenseLayer::setWeights(const std::vector<float> &w, const std::vector<float> &g, const std::vector<float> &b)
 {
 	//std::cout << "DenseLayer::setWeights" << std::endl;
 
 	_weights.clear();
+    _gamma.clear();
+    _beta.clear();
 	std::copy(w.begin(), w.end(), std::back_inserter(_weights));
+    std::copy(g.begin(), g.end(), std::back_inserter(_gamma));
+    std::copy(b.begin(), b.end(), std::back_inserter(_beta));
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------//
@@ -1651,7 +1779,7 @@ void OutputLayer::forwardProp(PropagationType p)
 	std::vector<float> act = _prevLayer->activations();
 	thrust::device_vector<float> input(act.begin(), act.begin() + inputSize);
 	thrust::device_vector<float> weights(_weights.size());
-	if(p == PREDICTION)
+	if(p == PREDICTION || p == SINGLE)
 		thrust::copy(_weights.begin(), _weights.end(), weights.begin());
 	else if(p == TARGET)
 		thrust::copy(_cachedWeights.begin(), _cachedWeights.end(), weights.begin());
@@ -1777,6 +1905,13 @@ std::vector<float> OutputLayer::weights() const
 	//std::cout << "OutputLayer::weights" << std::endl;
 
 	return _weights;
+}
+
+std::vector<float> OutputLayer::cachedWeights() const
+{
+	//std::cout << "OutputLayer::cachedWeights" << std::endl;
+
+    return _cachedWeights;
 }
 
 std::vector<float> OutputLayer::dotProducts() const
